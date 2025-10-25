@@ -6,6 +6,8 @@ import calendar
 import logging
 import re
 
+import coach
+
 # Estados da conversa
 GET_NAME, MAIN_MENU, GET_SALARY, GET_SALARY_DATE, GET_SALARY_DESC, GET_EXPENSE, GET_EXPENSE_DATE, GET_EXPENSE_DESC, GET_CREDIT, GET_CREDIT_DATE, GET_CREDIT_DESC, CONFIRM_DATE = range(12)
 
@@ -13,7 +15,8 @@ def main_keyboard():
     """Teclado principal do bot"""
     keyboard = [
         ['💰 Inserir Salário', '💸 Inserir Gasto'],
-        ['💳 Inserir Crédito', '📊 Extrato']
+        ['💳 Inserir Crédito', '📊 Extrato'],
+        ['🎓 Aprender Finanças', '🤔 Dica Rápida']  # Novos botões educacionais
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, input_field_placeholder="Escolha uma opção...")
 
@@ -448,6 +451,23 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         )
         return GET_CREDIT
         
+    elif text == '🎓 Aprender Finanças':
+        # Envia mensagem de "digitando..." para melhor UX
+        await update.message.reply_chat_action(action="typing")
+        
+        user_nickname = db.get_user_nickname(user_id)
+        lesson = await coach.finance_coach.get_personalized_education_fast(user_id, user_nickname)
+        await update.message.reply_text(lesson, reply_markup=main_keyboard())
+        return MAIN_MENU
+        
+    elif text == '🤔 Dica Rápida':
+        # Ação de typing para feedback imediato
+        await update.message.reply_chat_action(action="typing")
+        
+        quick_tip = await coach.finance_coach.get_quick_tip_fast(user_id)
+        await update.message.reply_text(quick_tip, reply_markup=main_keyboard())
+        return MAIN_MENU
+        
     elif text == '📊 Extrato':
         transactions = db.get_statement(user_id)
         nickname = db.get_user_nickname(user_id)
@@ -515,7 +535,7 @@ async def handle_salary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         return GET_SALARY
 
 async def handle_salary_description(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Processa a descrição final do salário"""
+    """Processa a descrição final do salário com micro-aula RÁPIDA"""
     try:
         description = update.message.text.strip()
         if not description:
@@ -529,25 +549,36 @@ async def handle_salary_description(update: Update, context: ContextTypes.DEFAUL
             user_id = update.effective_user.id
             db.add_transaction(user_id, 'credit', amount, f"Salário: {description}", date)
             
-            await update.message.reply_text(
+            # Mensagem de confirmação RÁPIDA
+            confirmation = (
                 f"✅ **Salário Registrado!**\n\n"
                 f"💰 Valor: R$ {amount:,.2f}\n"
                 f"📅 Data: {date}\n"
                 f"📝 Fonte: {description}\n\n"
-                f"Seu salário foi adicionado com sucesso!",
-                reply_markup=main_keyboard()
             )
-            # Limpa os dados temporários
-            context.user_data.pop('salary_amount', None)
-            context.user_data.pop('salary_date', None)
-            context.user_data.pop('current_transaction_type', None)
-            context.user_data.pop('tentative_date', None)
-        else:
+            
+            # Micro-aula RÁPIDA (assíncrona)
+            await update.message.reply_chat_action(action="typing")
+            micro_lesson = await coach.finance_coach.get_micro_lesson_fast(user_id, 'apos_salario')
+            
+            full_message = confirmation + micro_lesson
+            
             await update.message.reply_text(
-                "❌ Ocorreu um erro. Por favor, comece novamente.",
+                full_message,
                 reply_markup=main_keyboard()
             )
+            
+            # Limpa os dados temporários
+            context.user_data.clear()
+            
+        return MAIN_MENU
         
+    except Exception as e:
+        logging.error(f"Erro em handle_salary_description: {e}")
+        await update.message.reply_text(
+            "✅ Salário registrado! 💰 Continue organizando suas finanças!",
+            reply_markup=main_keyboard()
+        )
         return MAIN_MENU
         
     except Exception as e:
@@ -590,7 +621,7 @@ async def handle_expense(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return GET_EXPENSE
 
 async def handle_expense_description(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Processa a descrição final do gasto"""
+    """Processa a descrição final do gasto com reflexão educacional"""
     try:
         description = update.message.text.strip()
         if not description:
@@ -604,19 +635,45 @@ async def handle_expense_description(update: Update, context: ContextTypes.DEFAU
             user_id = update.effective_user.id
             db.add_transaction(user_id, 'debit', amount, f"Gasto: {description}", date)
             
-            await update.message.reply_text(
+            # Mensagem de confirmação
+            confirmation = (
                 f"✅ **Gasto Registrado!**\n\n"
                 f"💸 Valor: R$ {amount:,.2f}\n"
                 f"📅 Data: {date}\n"
                 f"📝 Motivo: {description}\n\n"
-                f"Seu gasto foi registrado com sucesso!",
+            )
+            
+            # Adiciona micro-aula contextual sobre consumo consciente
+            micro_lesson = coach.finance_coach.get_micro_lesson(user_id, 'apos_gasto')
+            
+            # Adiciona reflexão sobre o gasto
+            reflection = ""
+            if amount > 100:
+                reflection = (
+                    f"💭 **Reflexão:** Este gasto de R$ {amount:,.2f} representa:\n"
+                    f"• {amount / 5:.0f} cafezinhos ☕\n"
+                    f"• {amount / 50:.0f} litros de gasolina ⛽\n"
+                    f"• {amount / 10:.0f} kg de arroz 🍚\n\n"
+                )
+            elif amount > 20:
+                reflection = (
+                    f"💭 **Reflexão:** Pequenos gastos somam!\n"
+                    f"R$ {amount:,.2f} por dia = R$ {amount * 30:,.2f} por mês 📊\n\n"
+                )
+            
+            full_message = confirmation + reflection + micro_lesson
+            
+            await update.message.reply_text(
+                full_message,
                 reply_markup=main_keyboard()
             )
+            
             # Limpa os dados temporários
             context.user_data.pop('expense_amount', None)
             context.user_data.pop('expense_date', None)
             context.user_data.pop('current_transaction_type', None)
             context.user_data.pop('tentative_date', None)
+            
         else:
             await update.message.reply_text(
                 "❌ Ocorreu um erro. Por favor, comece novamente.",
@@ -665,7 +722,7 @@ async def handle_credit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         return GET_CREDIT
 
 async def handle_credit_description(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Processa a descrição final do crédito"""
+    """Processa a descrição final do crédito com educação sobre renda extra"""
     try:
         description = update.message.text.strip()
         if not description:
@@ -679,19 +736,49 @@ async def handle_credit_description(update: Update, context: ContextTypes.DEFAUL
             user_id = update.effective_user.id
             db.add_transaction(user_id, 'credit', amount, f"Crédito: {description}", date)
             
-            await update.message.reply_text(
+            # Mensagem de confirmação
+            confirmation = (
                 f"✅ **Crédito Adicionado!**\n\n"
                 f"💳 Valor: R$ {amount:,.2f}\n"
                 f"📅 Data: {date}\n"
                 f"📝 Fonte: {description}\n\n"
-                f"Seu crédito foi registrado com sucesso!",
+            )
+            
+            # Na linha que chama get_micro_lesson, mude 'apos_credito' para 'apos_credito'
+            micro_lesson = coach.finance_coach.get_micro_lesson(user_id, 'apos_credito')
+            
+            # Adiciona insights sobre potencial de investimento
+            investment_insight = ""
+            if amount > 50:
+                monthly_investment = amount * 0.7  # Sugere investir 70%
+                potential_growth = monthly_investment * 12 * 0.08  # 8% ao ano
+                
+                investment_insight = (
+                    f"💡 **Oportunidade:** Com R$ {amount:,.2f} extra:\n"
+                    f"• Investindo R$ {monthly_investment:,.2f}\n"
+                    f"• Potencial em 1 ano: +R$ {potential_growth:,.2f} 📈\n"
+                    f"• Juros compostos trabalham para você! 🚀\n\n"
+                )
+            else:
+                investment_insight = (
+                    f"💡 **Boa!** R$ {amount:,.2f} extra faz diferença!\n"
+                    f"• Pequenos valores criam grandes hábitos 💪\n"
+                    f"• Consistência > Quantia 🎯\n\n"
+                )
+            
+            full_message = confirmation + investment_insight + micro_lesson
+            
+            await update.message.reply_text(
+                full_message,
                 reply_markup=main_keyboard()
             )
+            
             # Limpa os dados temporários
             context.user_data.pop('credit_amount', None)
             context.user_data.pop('credit_date', None)
             context.user_data.pop('current_transaction_type', None)
             context.user_data.pop('tentative_date', None)
+            
         else:
             await update.message.reply_text(
                 "❌ Ocorreu um erro. Por favor, comece novamente.",
@@ -779,7 +866,31 @@ async def credito_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=ReplyKeyboardRemove()
     )
     return GET_CREDIT
+    
+async def aprender_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler para o comando /aprender"""
+    user_id = update.effective_user.id
+    
+    if not db.user_exists(user_id):
+        await update.message.reply_text("❌ Você precisa se cadastrar primeiro. Use /start para começar.")
+        return
+    
+    user_nickname = db.get_user_nickname(user_id)
+    lesson = coach.finance_coach.get_personalized_education(user_id, user_nickname)
+    await update.message.reply_text(lesson, reply_markup=main_keyboard())
 
+async def dica_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler para o comando /dica"""
+    user_id = update.effective_user.id
+    
+    if not db.user_exists(user_id):
+        await update.message.reply_text("❌ Você precisa se cadastrar primeiro. Use /start para começar.")
+        return
+    
+    await update.message.reply_chat_action(action="typing")
+    quick_tip = await coach.finance_coach.get_quick_tip_fast(user_id)
+    await update.message.reply_text(quick_tip, reply_markup=main_keyboard())
+    
 async def extrato_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler para o comando /extrato"""
     user_id = update.effective_user.id

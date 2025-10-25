@@ -68,6 +68,8 @@ def main():
     application.add_handler(CommandHandler("gasto", h.gasto_command))
     application.add_handler(CommandHandler("credito", h.credito_command))
     application.add_handler(CommandHandler("extrato", h.extrato_command))
+    application.add_handler(CommandHandler("aprender", h.aprender_command))  # Novo
+    application.add_handler(CommandHandler("dica", h.dica_command))  # Novo
 
     # Mensagem de inicialização no console
     print("=" * 60)
@@ -86,6 +88,9 @@ def main():
     except Exception as e:
         print(f"\n❌ Erro durante a execução: {e}")
     finally:
+        # Fecha a sessão do coach
+        import asyncio
+        asyncio.run(coach.finance_coach.close_session())
         print("✅ Bot finalizado com sucesso!")
 
 if __name__ == '__main__':
