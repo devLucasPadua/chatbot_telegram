@@ -63,6 +63,7 @@ cd bot_telegram_tcc
 Instale as dependências necessárias:
 ```bash
 pip install python-telegram-bot requests
+pip install aiohttp
 ```
 
 Configure as variáveis de ambiente no arquivo config.txt:
