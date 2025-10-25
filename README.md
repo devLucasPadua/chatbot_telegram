@@ -30,8 +30,8 @@ Pré-requisitos
 1. Clone o repositório
 
 ```bash
-git clone https://github.com/seu-usuario/finance-bot-telegram.git
-cd finance-bot-telegram
+https://github.com/devLucasPadua/chatbot_telegram.git
+cd chatbot_telegram
 ```
 
 1. Instale as dependências
