@@ -1,30 +1,42 @@
+# bot.py
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackQueryHandler
 import config
 import database as db
 import handlers as h
 import datetime
 import logging
+import sys
 
-# Configuração básica de logging
+# Configuração de logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.INFO,
+    stream=sys.stdout
 )
+logger = logging.getLogger(__name__)
 
 def main():
-    """Função principal"""
-    print("🚀 Inicializando Bot de Finanças Pessoais...")
+    """Função principal do bot"""
+    print("🤖 Inicializando Bot de Finanças Pessoais...")
     print("=" * 60)
     
-    # Inicializa o banco de dados
+    # Verificar token
+    if config.BOT_TOKEN == "SEU_TOKEN_AQUI":
+        print("❌ ERRO: Configure o BOT_TOKEN no arquivo config.py")
+        return
+    
+    # Inicializar banco de dados
     try:
-        db.init_db()
+        success = db.init_db()
+        if not success:
+            print("❌ Falha ao inicializar banco de dados")
+            return
         print("✅ Banco de dados inicializado com sucesso!")
     except Exception as e:
         print(f"❌ Erro ao inicializar banco de dados: {e}")
         return
 
-    # Cria a aplicação do bot
+    # Criar aplicação
     try:
         application = Application.builder().token(config.BOT_TOKEN).build()
         print("✅ Aplicação do bot criada com sucesso!")
@@ -32,66 +44,110 @@ def main():
         print(f"❌ Erro ao criar aplicação: {e}")
         return
 
-    # Configura o ConversationHandler
-    conv_handler = ConversationHandler(
+    # Conversation Handler para o fluxo de cadastro e gastos
+    cadastro_conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', h.start)],
         states={
             h.GET_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.get_name)],
-            h.MAIN_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.main_menu)],
-            h.GET_SALARY: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.handle_salary)],
-            h.GET_SALARY_DATE: [
-                CallbackQueryHandler(h.handle_calendar_callback),
+            h.GET_SALARY: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.get_salary)],
+            h.TIPO_GASTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.tipo_gasto_handler)],
+            h.CATEGORIA_FIXA: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.categoria_fixa_handler)],
+            h.CATEGORIA_FLEXIVEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.categoria_flexivel_handler)],
+            h.NOVA_CATEGORIA_FIXA: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.nova_categoria_fixa_handler)],
+            h.NOVA_CATEGORIA_FLEXIVEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.nova_categoria_flexivel_handler)],
+            h.VALOR_GASTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.valor_gasto_handler)],
+            h.DATA_GASTO: [
+                CallbackQueryHandler(h.Calendar.handle_callback, pattern='^CAL_'),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, h.handle_date_input)
             ],
-            h.GET_EXPENSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.handle_expense)],
-            h.GET_EXPENSE_DATE: [
-                CallbackQueryHandler(h.handle_calendar_callback),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, h.handle_date_input)
-            ],
-            h.GET_CREDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.handle_credit)],
-            h.GET_CREDIT_DATE: [
-                CallbackQueryHandler(h.handle_calendar_callback),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, h.handle_date_input)
-            ],
-            h.CONFIRM_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.handle_date_confirmation)],
-            h.GET_SALARY_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.handle_salary_description)],
-            h.GET_EXPENSE_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.handle_expense_description)],
-            h.GET_CREDIT_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.handle_credit_description)],
+            h.CONTINUAR_GASTOS: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.continuar_gastos_handler)],
+            h.RESUMO_GASTOS: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.resumo_gastos_handler)],
         },
         fallbacks=[CommandHandler('cancel', h.cancel)],
+        allow_reentry=True,
+        per_user=True,
+        per_chat=True
     )
 
-    application.add_handler(conv_handler)
+    # Conversation Handler para configurações
+    config_conv_handler = ConversationHandler(
+        entry_points=[
+            MessageHandler(filters.Regex(r'^(✏️ Editar Perfil|💰 Alterar Salário|🔄 Redefinir)$'), h.main_menu_handler)
+        ],
+        states={
+            h.EDIT_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.edit_name_handler)],
+            h.EDIT_SALARY: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.edit_salary_process_handler)],
+            h.CONFIRM_RESET: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.confirm_reset_handler)],
+        },
+        fallbacks=[CommandHandler('cancel', h.cancel)],
+        allow_reentry=True,
+        per_user=True,
+        per_chat=True
+    )
 
-    # Adiciona handlers para comandos diretos
-    application.add_handler(CommandHandler("salario", h.salario_command))
-    application.add_handler(CommandHandler("gasto", h.gasto_command))
-    application.add_handler(CommandHandler("credito", h.credito_command))
-    application.add_handler(CommandHandler("extrato", h.extrato_command))
-    application.add_handler(CommandHandler("aprender", h.aprender_command))  # Novo
-    application.add_handler(CommandHandler("dica", h.dica_command))  # Novo
+    # Conversation Handler para objetivos
+    goals_conv_handler = ConversationHandler(
+        entry_points=[
+            MessageHandler(filters.Regex(r'^(🎯 Adicionar Objetivo)$'), h.main_menu_handler)
+        ],
+        states={
+            h.GOAL_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.goal_type_handler)],
+            h.GOAL_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.goal_description_handler)],
+            h.GOAL_TARGET: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.goal_target_handler)],
+            h.GOAL_DEADLINE: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.goal_deadline_handler)],
+        },
+        fallbacks=[CommandHandler('cancel', h.cancel)],
+        allow_reentry=True,
+        per_user=True,
+        per_chat=True
+    )
 
-    # Mensagem de inicialização no console
+    # Adicionar handlers
+    application.add_handler(cadastro_conv_handler)
+    application.add_handler(config_conv_handler)
+    application.add_handler(goals_conv_handler)
+    
+    # Comandos simples
+    application.add_handler(CommandHandler("analisar", h.analisar_command))
+    application.add_handler(CommandHandler("resumo", h.resumo_command))
+    application.add_handler(CommandHandler("menu", h.menu_command))
+
+    # Handler para menu principal (deve ser o ÚLTIMO)
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND, 
+        h.main_menu_handler
+    ))
+
+    # Informações de inicialização
     print("=" * 60)
-    print("🤖 BOT DE FINANÇAS INICIADO COM SUCESSO!")
-    print(f"⏰ Horário: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
-    print("📍 Bot está rodando e aguardando mensagens...")
-    print("📍 Pressione Ctrl+C para parar o bot")
+    print("🎉 BOT DE FINANÇAS INICIADO COM SUCESSO!")
+    print(f"🕐 Horário: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+    print("📱 Bot está rodando e aguardando mensagens...")
+    print("🔧 **TODAS AS FUNCIONALIDADES DISPONÍVEIS:**")
+    print("   • ✅ Cadastro de usuários")
+    print("   • ✅ Adição de gastos fixos e flexíveis")
+    print("   • ✅ Calendário interativo")
+    print("   • ✅ Resumo financeiro")
+    print("   • ✅ Análise de saúde financeira")
+    print("   • ✅ Configurações (Editar Perfil, Alterar Salário, etc.)")
+    print("   • ✅ Sistema de Objetivos Financeiros")
+    print("   • ✅ Educação Financeira (Dicas, Glossário)")
+    print("   • ✅ Sistema de Ajuda Completo")
+    print("⏹️  Pressione Ctrl+C para parar o bot")
     print("=" * 60)
-    print()
 
-    # Inicia o bot
+    # Iniciar bot
     try:
-        application.run_polling(drop_pending_updates=True)
+        application.run_polling(
+            drop_pending_updates=True,
+            allowed_updates=['message', 'callback_query']
+        )
     except KeyboardInterrupt:
         print("\n🛑 Bot interrompido pelo usuário (Ctrl+C)")
     except Exception as e:
-        print(f"\n❌ Erro durante a execução: {e}")
+        print(f"❌ Erro durante a execução: {e}")
     finally:
-        # Fecha a sessão do coach
-        import asyncio
-        asyncio.run(coach.finance_coach.close_session())
-        print("✅ Bot finalizado com sucesso!")
+        print("✅ Bot finalizado!")
 
 if __name__ == '__main__':
     main()

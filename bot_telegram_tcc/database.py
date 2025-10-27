@@ -1,258 +1,406 @@
+# database.py
 import sqlite3
 import datetime
 from datetime import datetime, timedelta
+import logging
+import csv
+import io
 
+logger = logging.getLogger(__name__)
 DB_NAME = 'finance.db'
 
 def init_db():
-    """Inicializa o banco de dados"""
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    
-    # Tabela de usuários (versão simplificada)
-    c.execute('''CREATE TABLE IF NOT EXISTS users
-                 (user_id INTEGER PRIMARY KEY, 
-                  nickname TEXT)''')
-    
-    # Tabela de transações
-    c.execute('''CREATE TABLE IF NOT EXISTS transactions
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  user_id INTEGER,
-                  type TEXT,
-                  amount REAL,
-                  description TEXT,
-                  date TEXT,
-                  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
-    
-    conn.commit()
-    conn.close()
-    print("✅ Banco de dados SQLite inicializado!")
+    """Inicializa o banco de dados com nova estrutura"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        
+        c.execute('''CREATE TABLE IF NOT EXISTS users
+                     (user_id INTEGER PRIMARY KEY, 
+                      nickname TEXT,
+                      salario_liquido REAL,
+                      data_cadastro TEXT)''')
+        
+        c.execute('''CREATE TABLE IF NOT EXISTS transactions
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      user_id INTEGER,
+                      tipo_gasto TEXT,
+                      categoria TEXT,
+                      subcategoria TEXT,
+                      amount REAL,
+                      description TEXT,
+                      date TEXT,
+                      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+        
+        c.execute('''CREATE TABLE IF NOT EXISTS custom_categories
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      user_id INTEGER,
+                      tipo TEXT,
+                      nome_categoria TEXT,
+                      created_date TEXT)''')
+        
+        # NOVA TABELA: objetivos financeiros
+        c.execute('''CREATE TABLE IF NOT EXISTS goals
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      user_id INTEGER,
+                      tipo TEXT,
+                      descricao TEXT,
+                      valor_meta REAL,
+                      valor_atual REAL,
+                      data_criacao TEXT,
+                      data_conclusao TEXT,
+                      concluido INTEGER DEFAULT 0)''')
+        
+        # NOVA TABELA: histórico de salários
+        c.execute('''CREATE TABLE IF NOT EXISTS salary_history
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      user_id INTEGER,
+                      salario_liquido REAL,
+                      data_alteracao TEXT)''')
+        
+        conn.commit()
+        conn.close()
+        logger.info("Banco de dados SQLite inicializado com sucesso!")
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao inicializar banco de dados: {e}")
+        return False
 
-def add_user(user_id, nickname):
+def add_user(user_id, nickname, salario_liquido=None):
     """Adiciona ou atualiza um usuário"""
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("INSERT OR REPLACE INTO users (user_id, nickname) VALUES (?, ?)", 
-              (user_id, nickname))
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO users (user_id, nickname, salario_liquido, data_cadastro) VALUES (?, ?, ?, ?)", 
+                  (user_id, nickname, salario_liquido, datetime.now().strftime('%Y-%m-%d')))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao adicionar usuário: {e}")
+        return False
+
+def update_user_salary(user_id, salario_liquido):
+    """Atualiza o salário do usuário"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("UPDATE users SET salario_liquido = ? WHERE user_id = ?", 
+                  (salario_liquido, user_id))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao atualizar salário: {e}")
+        return False
 
 def user_exists(user_id):
     """Verifica se o usuário já está cadastrado"""
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("SELECT 1 FROM users WHERE user_id=?", (user_id,))
-    result = c.fetchone() is not None
-    conn.close()
-    return result
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT 1 FROM users WHERE user_id=?", (user_id,))
+        result = c.fetchone() is not None
+        conn.close()
+        return result
+    except Exception as e:
+        logger.error(f"Erro ao verificar usuário: {e}")
+        return False
 
 def get_user_data(user_id):
     """Obtém todos os dados do usuário"""
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("SELECT user_id, nickname FROM users WHERE user_id=?", (user_id,))
-    result = c.fetchone()
-    conn.close()
-    
-    if result:
-        return {
-            'user_id': result[0],
-            'nickname': result[1]
-        }
-    return None
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT user_id, nickname, salario_liquido FROM users WHERE user_id=?", (user_id,))
+        result = c.fetchone()
+        conn.close()
+        
+        if result:
+            return {
+                'user_id': result[0],
+                'nickname': result[1],
+                'salario_liquido': result[2] if result[2] else 0.0
+            }
+        return None
+    except Exception as e:
+        logger.error(f"Erro ao obter dados do usuário: {e}")
+        return None
 
-def add_transaction(user_id, type, amount, description, date=None):
-    """Adiciona uma transação (crédito ou débito)"""
-    if date is None:
-        date = datetime.now().strftime('%d/%m/%Y')
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("INSERT INTO transactions (user_id, type, amount, description, date) VALUES (?, ?, ?, ?, ?)",
-              (user_id, type, amount, description, date))
-    conn.commit()
-    conn.close()
+def add_transaction(user_id, tipo_gasto, categoria, subcategoria, amount, description, date=None):
+    """Adiciona uma transação com nova estrutura"""
+    try:
+        if date is None:
+            date = datetime.now().strftime('%d/%m/%Y')
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("INSERT INTO transactions (user_id, tipo_gasto, categoria, subcategoria, amount, description, date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                  (user_id, tipo_gasto, categoria, subcategoria, amount, description, date))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao adicionar transação: {e}")
+        return False
 
-def get_balance(user_id):
-    """Calcula o saldo total do usuário"""
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("SELECT SUM(CASE WHEN type='credit' THEN amount ELSE -amount END) FROM transactions WHERE user_id=?", (user_id,))
-    result = c.fetchone()[0]
-    conn.close()
-    return result or 0.0
+def add_custom_category(user_id, tipo, nome_categoria):
+    """Adiciona uma categoria personalizada"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("INSERT INTO custom_categories (user_id, tipo, nome_categoria, created_date) VALUES (?, ?, ?, ?)",
+                  (user_id, tipo, nome_categoria, datetime.now().strftime('%Y-%m-%d')))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao adicionar categoria personalizada: {e}")
+        return False
 
-def get_statement(user_id, limit=10):
-    """Obtém o extrato do usuário"""
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("SELECT type, amount, description, date FROM transactions WHERE user_id=? ORDER BY timestamp DESC LIMIT ?", 
-              (user_id, limit))
-    result = c.fetchall()
-    conn.close()
-    return result
+def get_custom_categories(user_id, tipo):
+    """Obtém categorias personalizadas do usuário"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT nome_categoria FROM custom_categories WHERE user_id=? AND tipo=?", (user_id, tipo))
+        result = c.fetchall()
+        conn.close()
+        return [row[0] for row in result]
+    except Exception as e:
+        logger.error(f"Erro ao obter categorias personalizadas: {e}")
+        return []
+
+def get_monthly_expenses(user_id, month=None, year=None):
+    """Obtém gastos do mês para resumo"""
+    try:
+        if month is None:
+            month = datetime.now().month
+        if year is None:
+            year = datetime.now().year
+        
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        
+        start_date = f"{year}-{month:02d}-01"
+        if month == 12:
+            end_date = f"{year+1}-01-01"
+        else:
+            end_date = f"{year}-{month+1:02d}-01"
+        
+        c.execute('''SELECT tipo_gasto, categoria, subcategoria, SUM(amount) 
+                     FROM transactions 
+                     WHERE user_id=? AND timestamp >= ? AND timestamp < ?
+                     GROUP BY tipo_gasto, categoria, subcategoria''', 
+                  (user_id, start_date, end_date))
+        
+        result = c.fetchall()
+        conn.close()
+        
+        expenses = {'fixo': {}, 'flexivel': {}}
+        for row in result:
+            tipo, categoria, subcategoria, amount = row
+            if categoria not in expenses[tipo]:
+                expenses[tipo][categoria] = {}
+            expenses[tipo][categoria][subcategoria] = amount
+        
+        return expenses
+    except Exception as e:
+        logger.error(f"Erro ao obter gastos mensais: {e}")
+        return {'fixo': {}, 'flexivel': {}}
 
 def get_user_nickname(user_id):
     """Obtém o apelido do usuário"""
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("SELECT nickname FROM users WHERE user_id=?", (user_id,))
-    result = c.fetchone()
-    conn.close()
-    return result[0] if result else "Usuário"
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT nickname FROM users WHERE user_id=?", (user_id,))
+        result = c.fetchone()
+        conn.close()
+        return result[0] if result else "Usuário"
+    except Exception as e:
+        logger.error(f"Erro ao obter nickname: {e}")
+        return "Usuário"
 
-# --- FUNÇÕES ADICIONAIS PARA O COACH (OPCIONAIS) ---
+def get_balance(user_id):
+    """Calcula o saldo total do usuário"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT SUM(CASE WHEN tipo_gasto='flexivel' THEN -amount ELSE 0 END) + SUM(CASE WHEN tipo_gasto='fixo' THEN -amount ELSE 0 END) FROM transactions WHERE user_id=?", (user_id,))
+        result = c.fetchone()[0]
+        conn.close()
+        return result or 0.0
+    except Exception as e:
+        logger.error(f"Erro ao calcular saldo: {e}")
+        return 0.0
 
-def get_monthly_summary(user_id, year, month):
-    """Obtém resumo mensal para análises mais avançadas (OPCIONAL)"""
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    
-    start_date = f"{year}-{month:02d}-01"
-    if month == 12:
-        end_date = f"{year+1}-01-01"
-    else:
-        end_date = f"{year}-{month+1:02d}-01"
-    
-    c.execute('''SELECT type, SUM(amount) 
-                 FROM transactions 
-                 WHERE user_id=? AND timestamp >= ? AND timestamp < ?
-                 GROUP BY type''', 
-              (user_id, start_date, end_date))
-    
-    result = c.fetchall()
-    conn.close()
-    
-    summary = {'credit': 0, 'debit': 0}
-    for row in result:
-        summary[row[0]] = row[1] or 0
-    
-    return summary
+def get_statement(user_id, limit=10):
+    """Obtém o extrato do usuário"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT tipo_gasto, categoria, amount, description, date FROM transactions WHERE user_id=? ORDER BY timestamp DESC LIMIT ?", 
+                  (user_id, limit))
+        result = c.fetchall()
+        conn.close()
+        return result
+    except Exception as e:
+        logger.error(f"Erro ao obter extrato: {e}")
+        return []
 
-def get_transactions_by_period(user_id, days=30):
-    """Obtém transações de um período específico (OPCIONAL)"""
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    
-    since_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
-    c.execute('''SELECT type, amount, description, date, timestamp 
-                 FROM transactions 
-                 WHERE user_id=? AND timestamp >= ?
-                 ORDER BY timestamp DESC''', 
-              (user_id, since_date))
-    
-    transactions = c.fetchall()
-    conn.close()
-    return transactions
+# NOVAS FUNÇÕES PARA OBJETIVOS
+def add_goal(user_id, tipo, descricao, valor_meta, valor_atual=0):
+    """Adiciona um novo objetivo financeiro"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("INSERT INTO goals (user_id, tipo, descricao, valor_meta, valor_atual, data_criacao) VALUES (?, ?, ?, ?, ?, ?)",
+                  (user_id, tipo, descricao, valor_meta, valor_atual, datetime.now().strftime('%Y-%m-%d')))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao adicionar objetivo: {e}")
+        return False
 
-def get_expense_categories(user_id, days=30):
-    """Analisa categorias de gastos (OPCIONAL)"""
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    
-    since_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
-    c.execute('''SELECT description, SUM(amount) 
-                 FROM transactions 
-                 WHERE user_id=? AND type='debit' AND timestamp >= ?
-                 GROUP BY description''', 
-              (user_id, since_date))
-    
-    expenses = c.fetchall()
-    conn.close()
-    
-    # Categorização simplificada
-    categories = {}
-    for desc, amount in expenses:
-        category = categorize_expense(desc)
-        categories[category] = categories.get(category, 0) + amount
-    
-    return categories
+def get_goals(user_id):
+    """Obtém todos os objetivos do usuário"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT id, tipo, descricao, valor_meta, valor_atual, data_criacao, concluido FROM goals WHERE user_id=? ORDER BY data_criacao DESC", (user_id,))
+        result = c.fetchall()
+        conn.close()
+        
+        goals = []
+        for row in result:
+            goals.append({
+                'id': row[0],
+                'tipo': row[1],
+                'descricao': row[2],
+                'valor_meta': row[3],
+                'valor_atual': row[4],
+                'data_criacao': row[5],
+                'concluido': bool(row[6])
+            })
+        return goals
+    except Exception as e:
+        logger.error(f"Erro ao obter objetivos: {e}")
+        return []
 
-def categorize_expense(description):
-    """Categoriza despesas baseado na descrição (OPCIONAL)"""
-    desc_lower = description.lower()
-    
-    if any(word in desc_lower for word in ['mercado', 'supermercado', 'alimentação', 'comida']):
-        return 'alimentação'
-    elif any(word in desc_lower for word in ['aluguel', 'luz', 'água', 'energia', 'internet']):
-        return 'moradia'
-    elif any(word in desc_lower for word in ['transporte', 'gasolina', 'uber', 'ônibus']):
-        return 'transporte'
-    elif any(word in desc_lower for word in ['restaurante', 'ifood', 'delivery', 'lanche']):
-        return 'alimentação_externa'
-    else:
-        return 'outros'
+def update_goal_progress(goal_id, valor_atual):
+    """Atualiza o progresso de um objetivo"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("UPDATE goals SET valor_atual = ? WHERE id = ?", (valor_atual, goal_id))
+        
+        # Verificar se objetivo foi concluído
+        c.execute("SELECT valor_meta, valor_atual FROM goals WHERE id = ?", (goal_id,))
+        meta, atual = c.fetchone()
+        if atual >= meta:
+            c.execute("UPDATE goals SET concluido = 1, data_conclusao = ? WHERE id = ?", 
+                     (datetime.now().strftime('%Y-%m-%d'), goal_id))
+        
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao atualizar objetivo: {e}")
+        return False
 
-# --- NOVAS TABELAS PARA VERSÃO AVANÇADA DO COACH (OPCIONAIS) ---
+def delete_goal(goal_id):
+    """Exclui um objetivo"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("DELETE FROM goals WHERE id = ?", (goal_id,))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao excluir objetivo: {e}")
+        return False
 
-def init_advanced_tables():
-    """Inicializa tabelas avançadas para tracking educacional (OPCIONAL)"""
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    
-    # Tabela para acompanhar progresso educacional
-    c.execute('''CREATE TABLE IF NOT EXISTS user_progress
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  user_id INTEGER,
-                  concept_learned TEXT,
-                  learning_date TEXT,
-                  confidence_level INTEGER,
-                  FOREIGN KEY(user_id) REFERENCES users(user_id))''')
-    
-    # Tabela para metas financeiras
-    c.execute('''CREATE TABLE IF NOT EXISTS financial_goals
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  user_id INTEGER,
-                  goal_name TEXT,
-                  target_amount REAL,
-                  current_amount REAL,
-                  deadline TEXT,
-                  created_date TEXT,
-                  FOREIGN KEY(user_id) REFERENCES users(user_id))''')
-    
-    # Tabela para dicas personalizadas
-    c.execute('''CREATE TABLE IF NOT EXISTS user_tips
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  user_id INTEGER,
-                  tip_text TEXT,
-                  tip_category TEXT,
-                  shown_date TEXT,
-                  understood BOOLEAN,
-                  FOREIGN KEY(user_id) REFERENCES users(user_id))''')
-    
-    conn.commit()
-    conn.close()
-    print("✅ Tabelas avançadas do coach inicializadas!")
+# NOVAS FUNÇÕES PARA HISTÓRICO DE SALÁRIOS
+def add_salary_history(user_id, salario_liquido):
+    """Adiciona registro no histórico de salários"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("INSERT INTO salary_history (user_id, salario_liquido, data_alteracao) VALUES (?, ?, ?)",
+                  (user_id, salario_liquido, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao adicionar histórico de salário: {e}")
+        return False
 
-def add_learning_progress(user_id, concept, confidence=1):
-    """Registra progresso de aprendizado (OPCIONAL)"""
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("INSERT INTO user_progress (user_id, concept_learned, learning_date, confidence_level) VALUES (?, ?, ?, ?)",
-              (user_id, concept, datetime.now().strftime('%Y-%m-%d'), confidence))
-    conn.commit()
-    conn.close()
+def get_salary_history(user_id, limit=5):
+    """Obtém histórico de salários do usuário"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT salario_liquido, data_alteracao FROM salary_history WHERE user_id=? ORDER BY data_alteracao DESC LIMIT ?", 
+                  (user_id, limit))
+        result = c.fetchall()
+        conn.close()
+        return result
+    except Exception as e:
+        logger.error(f"Erro ao obter histórico de salários: {e}")
+        return []
 
-def add_financial_goal(user_id, goal_name, target_amount, deadline):
-    """Adiciona uma meta financeira (OPCIONAL)"""
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("INSERT INTO financial_goals (user_id, goal_name, target_amount, current_amount, deadline, created_date) VALUES (?, ?, ?, ?, ?, ?)",
-              (user_id, goal_name, target_amount, 0, deadline, datetime.now().strftime('%Y-%m-%d')))
-    conn.commit()
-    conn.close()
+# NOVA FUNÇÃO: Exportar dados para CSV
+def export_user_data(user_id):
+    """Exporta todos os dados do usuário para formato CSV"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        
+        # Dados do usuário
+        c.execute("SELECT nickname, salario_liquido, data_cadastro FROM users WHERE user_id=?", (user_id,))
+        user_data = c.fetchone()
+        
+        # Transações
+        c.execute('''SELECT tipo_gasto, categoria, subcategoria, amount, description, date, timestamp 
+                     FROM transactions WHERE user_id=? ORDER BY timestamp DESC''', (user_id,))
+        transactions = c.fetchall()
+        
+        # Objetivos
+        c.execute("SELECT tipo, descricao, valor_meta, valor_atual, data_criacao, concluido FROM goals WHERE user_id=?", (user_id,))
+        goals = c.fetchall()
+        
+        conn.close()
+        
+        return {
+            'user_data': user_data,
+            'transactions': transactions,
+            'goals': goals
+        }
+    except Exception as e:
+        logger.error(f"Erro ao exportar dados: {e}")
+        return None
 
-def get_user_goals(user_id):
-    """Obtém metas do usuário (OPCIONAL)"""
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("SELECT goal_name, target_amount, current_amount, deadline FROM financial_goals WHERE user_id=?", (user_id,))
-    result = c.fetchall()
-    conn.close()
-    return result
-
-# --- ATUALIZAÇÃO DA FUNÇÃO INIT_DB PARA INCLUIR TABELAS AVANÇADAS ---
-
-def init_db_complete():
-    """Inicializa o banco de dados completo com todas as tabelas"""
-    init_db()  # Inicializa tabelas básicas
-    init_advanced_tables()  # Inicializa tabelas avançadas (opcionais)
+# NOVA FUNÇÃO: Resetar dados do usuário
+def reset_user_data(user_id):
+    """Remove todos os dados do usuário (exceto cadastro básico)"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        
+        # Manter apenas dados básicos do usuário, remover todo o resto
+        c.execute("DELETE FROM transactions WHERE user_id=?", (user_id,))
+        c.execute("DELETE FROM custom_categories WHERE user_id=?", (user_id,))
+        c.execute("DELETE FROM goals WHERE user_id=?", (user_id,))
+        c.execute("DELETE FROM salary_history WHERE user_id=?", (user_id,))
+        
+        # Resetar salário para NULL
+        c.execute("UPDATE users SET salario_liquido = NULL WHERE user_id=?", (user_id,))
+        
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao resetar dados: {e}")
+        return False
