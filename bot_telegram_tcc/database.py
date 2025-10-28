@@ -1,4 +1,4 @@
-# database.py
+# database.py - VERSÃO CORRIGIDA
 import sqlite3
 import datetime
 from datetime import datetime, timedelta
@@ -127,6 +127,17 @@ def get_user_data(user_id):
         logger.error(f"Erro ao obter dados do usuário: {e}")
         return None
 
+def get_user_nickname(user_id):
+    """Obtém o apelido do usuário de forma segura"""
+    try:
+        user_data = get_user_data(user_id)
+        if user_data and user_data['nickname']:
+            return user_data['nickname']
+        return "Usuário"
+    except Exception as e:
+        logger.error(f"Erro ao obter nickname: {e}")
+        return "Usuário"
+
 def add_transaction(user_id, tipo_gasto, categoria, subcategoria, amount, description, date=None):
     """Adiciona uma transação com nova estrutura"""
     try:
@@ -207,19 +218,6 @@ def get_monthly_expenses(user_id, month=None, year=None):
     except Exception as e:
         logger.error(f"Erro ao obter gastos mensais: {e}")
         return {'fixo': {}, 'flexivel': {}}
-
-def get_user_nickname(user_id):
-    """Obtém o apelido do usuário"""
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute("SELECT nickname FROM users WHERE user_id=?", (user_id,))
-        result = c.fetchone()
-        conn.close()
-        return result[0] if result else "Usuário"
-    except Exception as e:
-        logger.error(f"Erro ao obter nickname: {e}")
-        return "Usuário"
 
 def get_balance(user_id):
     """Calcula o saldo total do usuário"""

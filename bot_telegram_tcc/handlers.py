@@ -1,4 +1,4 @@
-# handlers.py
+# handlers.py - VERSÃO COMPLETAMENTE CORRIGIDA
 from telegram import ReplyKeyboardMarkup, Update, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes, ConversationHandler, CallbackQueryHandler
 import database as db
@@ -264,7 +264,21 @@ class Calendar:
         """Finaliza a seleção da data"""
         query = update.callback_query
         
-        user_id = context.user_data['user_id']
+        # CORREÇÃO: Obter user_id de forma segura
+        user_id = context.user_data.get('user_id')
+        if not user_id:
+            await query.edit_message_text("❌ Erro: Sessão expirada. Por favor, comece novamente.")
+            return ConversationHandler.END
+        
+        # CORREÇÃO: Verificar se todos os dados necessários estão disponíveis
+        required_keys = ['tipo_gasto', 'categoria', 'valor_gasto']
+        missing_keys = [key for key in required_keys if key not in context.user_data]
+        
+        if missing_keys:
+            logger.error(f"Dados faltantes no user_data: {missing_keys}")
+            await query.edit_message_text("❌ Erro: Dados do gasto não encontrados. Por favor, comece novamente.")
+            return ConversationHandler.END
+        
         tipo_gasto = context.user_data['tipo_gasto']
         categoria = context.user_data['categoria']
         valor = context.user_data['valor_gasto']
@@ -320,11 +334,14 @@ def validate_date(date_str):
     except ValueError:
         return False
 
-# ========== HANDLERS PRINCIPAIS ==========
+# ========== HANDLERS PRINCIPAIS CORRIGIDOS ==========
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Inicia a conversação"""
+    """Inicia a conversação - CORRIGIDO"""
     user_id = update.effective_user.id
+    
+    # CORREÇÃO: Sempre inicializar user_data com user_id
+    context.user_data['user_id'] = user_id
     
     if db.user_exists(user_id):
         user_data = db.get_user_data(user_id)
@@ -364,7 +381,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return GET_NAME
 
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Obtém o nome do usuário"""
+    """Obtém o nome do usuário - CORRIGIDO"""
     nickname = update.message.text.strip()
     user_id = update.effective_user.id
     
@@ -372,6 +389,7 @@ async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await update.message.reply_text("❌ Por favor, digite um nome válido.")
         return GET_NAME
     
+    # CORREÇÃO: Garantir que user_id está no context
     context.user_data['nickname'] = nickname
     context.user_data['user_id'] = user_id
     
@@ -387,7 +405,7 @@ async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return GET_SALARY
 
 async def get_salary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Obtém o salário do usuário"""
+    """Obtém o salário do usuário - CORRIGIDO"""
     try:
         salary_text = update.message.text.replace(',', '.').strip()
         salario_liquido = float(salary_text)
@@ -396,8 +414,9 @@ async def get_salary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             await update.message.reply_text("❌ O valor deve ser maior que zero. Tente novamente:")
             return GET_SALARY
         
-        user_id = context.user_data['user_id']
-        nickname = context.user_data['nickname']
+        # CORREÇÃO: Garantir que user_id está disponível
+        user_id = context.user_data.get('user_id', update.effective_user.id)
+        nickname = context.user_data.get('nickname', 'Usuário')
         
         success = db.add_user(user_id, nickname, salario_liquido)
         
@@ -452,9 +471,73 @@ async def get_salary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         )
         return GET_SALARY
 
-async def tipo_gasto_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Processa a seleção do tipo de gasto"""
+# ========== HANDLERS PARA REGISTRAR GASTOS CORRIGIDOS ==========
+
+async def adicionar_gastos_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler para o comando /adicionar - CORRIGIDO"""
+    user_id = update.effective_user.id
+    
+    if not db.user_exists(user_id):
+        await update.message.reply_text("❌ Você precisa se cadastrar primeiro. Use /start para começar.")
+        return
+    
+    # CORREÇÃO: Inicializar user_data
+    context.user_data['user_id'] = user_id
+    context.user_data['nickname'] = db.get_user_nickname(user_id)
+    
+    await update.message.reply_text(
+        "💸 **REGISTRAR GASTOS**\n\n"
+        "Selecione o tipo de gasto que deseja registrar:",
+        reply_markup=gastos_keyboard()
+    )
+
+async def iniciar_registro_gasto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Inicia o registro de gasto a partir do menu de gastos - CORRIGIDO"""
+    user_id = update.effective_user.id
+    
+    if not db.user_exists(user_id):
+        await update.message.reply_text("❌ Você precisa se cadastrar primeiro. Use /start para começar.")
+        return ConversationHandler.END
+    
+    # CORREÇÃO CRÍTICA: Inicializar user_data com user_id e nickname
+    context.user_data['user_id'] = user_id
+    context.user_data['nickname'] = db.get_user_nickname(user_id)
+    
     text = update.message.text
+    
+    if 'Gastos Fixos' in text:
+        context.user_data['tipo_gasto'] = 'fixo'
+        await update.message.reply_text(
+            "🏠 **CATEGORIAS DE GASTOS FIXOS**\n\n"
+            "📋 Selecione a categoria do gasto:",
+            reply_markup=categorias_fixas_keyboard()
+        )
+        return CATEGORIA_FIXA
+        
+    elif 'Gastos Flexíveis' in text:
+        context.user_data['tipo_gasto'] = 'flexivel'
+        await update.message.reply_text(
+            "🛍️ **CATEGORIAS DE GASTOS FLEXÍVEIS**\n\n"
+            "📋 Selecione a categoria do gasto:",
+            reply_markup=categorias_flexiveis_keyboard()
+        )
+        return CATEGORIA_FLEXIVEL
+    
+    else:
+        await update.message.reply_text(
+            "❌ Por favor, selecione uma opção válida:",
+            reply_markup=gastos_keyboard()
+        )
+        return ConversationHandler.END
+
+async def tipo_gasto_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Processa a seleção do tipo de gasto - CORRIGIDO"""
+    text = update.message.text
+    
+    # CORREÇÃO: Garantir que user_id está no context
+    if 'user_id' not in context.user_data:
+        context.user_data['user_id'] = update.effective_user.id
+        context.user_data['nickname'] = db.get_user_nickname(update.effective_user.id)
     
     clean_text = re.sub(r'[^\w\s]', '', text).strip()
     
@@ -491,12 +574,14 @@ async def tipo_gasto_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return TIPO_GASTO
 
-# [CONTINUA... O arquivo handlers.py é muito longo. Continuarei no próximo bloco]
-
-# handlers.py (continuação)
 async def categoria_fixa_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Processa categoria fixa selecionada"""
+    """Processa categoria fixa selecionada - CORRIGIDO"""
     text = update.message.text
+    
+    # CORREÇÃO: Garantir que user_id está no context
+    if 'user_id' not in context.user_data:
+        context.user_data['user_id'] = update.effective_user.id
+        context.user_data['nickname'] = db.get_user_nickname(update.effective_user.id)
     
     if 'Voltar ao Menu' in text:
         await update.message.reply_text(
@@ -527,8 +612,13 @@ async def categoria_fixa_handler(update: Update, context: ContextTypes.DEFAULT_T
         return VALOR_GASTO
 
 async def categoria_flexivel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Processa categoria flexível selecionada"""
+    """Processa categoria flexível selecionada - CORRIGIDO"""
     text = update.message.text
+    
+    # CORREÇÃO: Garantir que user_id está no context
+    if 'user_id' not in context.user_data:
+        context.user_data['user_id'] = update.effective_user.id
+        context.user_data['nickname'] = db.get_user_nickname(update.effective_user.id)
     
     if 'Voltar ao Menu' in text:
         await update.message.reply_text(
@@ -559,9 +649,11 @@ async def categoria_flexivel_handler(update: Update, context: ContextTypes.DEFAU
         return VALOR_GASTO
 
 async def nova_categoria_fixa_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Processa nova categoria fixa"""
+    """Processa nova categoria fixa - CORRIGIDO"""
     nova_categoria = update.message.text.strip()
-    user_id = context.user_data['user_id']
+    
+    # CORREÇÃO: Garantir que user_id está disponível
+    user_id = context.user_data.get('user_id', update.effective_user.id)
     
     if not nova_categoria:
         await update.message.reply_text("❌ Por favor, digite um nome válido para a categoria.")
@@ -585,9 +677,11 @@ async def nova_categoria_fixa_handler(update: Update, context: ContextTypes.DEFA
     return VALOR_GASTO
 
 async def nova_categoria_flexivel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Processa nova categoria flexível"""
+    """Processa nova categoria flexível - CORRIGIDO"""
     nova_categoria = update.message.text.strip()
-    user_id = context.user_data['user_id']
+    
+    # CORREÇÃO: Garantir que user_id está disponível
+    user_id = context.user_data.get('user_id', update.effective_user.id)
     
     if not nova_categoria:
         await update.message.reply_text("❌ Por favor, digite um nome válido para a categoria.")
@@ -611,7 +705,7 @@ async def nova_categoria_flexivel_handler(update: Update, context: ContextTypes.
     return VALOR_GASTO
 
 async def valor_gasto_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Processa o valor do gasto"""
+    """Processa o valor do gasto - CORRIGIDO"""
     try:
         amount_text = update.message.text.replace(',', '.').strip()
         amount = float(amount_text)
@@ -640,7 +734,7 @@ async def valor_gasto_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         return VALOR_GASTO
 
 async def handle_date_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Processa entrada manual de data"""
+    """Processa entrada manual de data - CORRIGIDO"""
     text = update.message.text.strip().lower()
     
     if text == 'hoje':
@@ -659,7 +753,18 @@ async def handle_date_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return DATA_GASTO
     
-    user_id = context.user_data['user_id']
+    # CORREÇÃO: Garantir que user_id está disponível
+    user_id = context.user_data.get('user_id', update.effective_user.id)
+    
+    # CORREÇÃO: Verificar se todos os dados necessários estão disponíveis
+    required_keys = ['tipo_gasto', 'categoria', 'valor_gasto']
+    missing_keys = [key for key in required_keys if key not in context.user_data]
+    
+    if missing_keys:
+        logger.error(f"Dados faltantes no user_data: {missing_keys}")
+        await update.message.reply_text("❌ Erro: Dados do gasto não encontrados. Por favor, comece novamente.")
+        return ConversationHandler.END
+    
     tipo_gasto = context.user_data['tipo_gasto']
     categoria = context.user_data['categoria']
     valor = context.user_data['valor_gasto']
@@ -686,7 +791,7 @@ async def handle_date_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
 async def continuar_gastos_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Processa se o usuário quer continuar adicionando gastos"""
+    """Processa se o usuário quer continuar adicionando gastos - CORRIGIDO"""
     text = update.message.text
     
     if 'SIM' in text:
@@ -698,8 +803,10 @@ async def continuar_gastos_handler(update: Update, context: ContextTypes.DEFAULT
         return TIPO_GASTO
         
     elif 'NÃO' in text:
-        user_id = context.user_data['user_id']
-        nickname = context.user_data['nickname']
+        # CORREÇÃO: Obter user_id de forma segura e nickname do banco de dados
+        user_id = context.user_data.get('user_id', update.effective_user.id)
+        nickname = db.get_user_nickname(user_id)  # Buscar do banco de dados
+        
         expenses = db.get_monthly_expenses(user_id)
         
         response = f"📊 **RESUMO DOS SEUS GASTOS - {nickname}**\n\n"
@@ -727,7 +834,7 @@ async def continuar_gastos_handler(update: Update, context: ContextTypes.DEFAULT
         response += f"🎯 **TOTAL GASTO:** R$ {total_geral:,.2f}\n\n"
         
         user_data = db.get_user_data(user_id)
-        salario = user_data['salario_liquido']
+        salario = user_data['salario_liquido'] if user_data else 0
         saldo = salario - total_geral
         
         response += f"💵 **Seu salário:** R$ {salario:,.2f}\n"
@@ -753,12 +860,13 @@ async def continuar_gastos_handler(update: Update, context: ContextTypes.DEFAULT
         return CONTINUAR_GASTOS
 
 async def resumo_gastos_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Processa ações após o resumo"""
+    """Processa ações após o resumo - CORRIGIDO"""
     text = update.message.text
     
     if any(word in text for word in ['Analisar Saúde Financeira', 'Análise Detalhada']):
-        user_id = context.user_data['user_id']
-        nickname = context.user_data['nickname']
+        # CORREÇÃO: Obter user_id e nickname do banco de dados
+        user_id = context.user_data.get('user_id', update.effective_user.id)
+        nickname = db.get_user_nickname(user_id)
         
         await update.message.reply_text(
             f"📈 **ANÁLISE DE SAÚDE FINANCEIRA - {nickname}**\n\n"
@@ -809,7 +917,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 # ========== HANDLERS DE CONFIGURAÇÕES ==========
 
 async def configuracoes_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler para menu de configurações"""
+    """Handler para configurações"""
     await update.message.reply_text(
         "⚙️ **CONFIGURAÇÕES**\n\n"
         "🔧 Gerencie sua conta e dados:",
@@ -1005,7 +1113,7 @@ async def confirm_reset_handler(update: Update, context: ContextTypes.DEFAULT_TY
 # ========== HANDLERS DE AJUDA ==========
 
 async def ajuda_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler para menu de ajuda"""
+    """Handler para ajuda"""
     await update.message.reply_text(
         "❓ **AJUDA E SUPORTE**\n\n"
         "Encontre ajuda e informações:",
@@ -1426,13 +1534,19 @@ async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ========== HANDLER PRINCIPAL ==========
 
 async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler principal atualizado para o menu"""
+    """Handler principal atualizado para o menu - CORRIGIDO"""
     text = update.message.text
     user_id = update.effective_user.id
     
     if not db.user_exists(user_id):
         await update.message.reply_text("❌ Você precisa se cadastrar primeiro. Use /start para começar.")
         return ConversationHandler.END
+    
+    # CORREÇÃO: Inicializar user_data com user_id e nickname
+    context.user_data['user_id'] = user_id
+    context.user_data['nickname'] = db.get_user_nickname(user_id)
+    
+    logger.info(f"Main menu handler recebeu: {text}")
     
     # Menu Principal
     if text == '💸 Registrar Gastos':
@@ -1461,6 +1575,31 @@ async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     elif text == '❓ Ajuda':
         await ajuda_handler(update, context)
+        return ConversationHandler.END
+
+    # Submenu de Gastos
+    elif text == '🏠 Gastos Fixos':
+        return await iniciar_registro_gasto(update, context)
+        
+    elif text == '🛍️ Gastos Flexíveis':
+        return await iniciar_registro_gasto(update, context)
+        
+    elif text == '📅 Gastos do Mês':
+        await update.message.reply_text(
+            "📅 **GASTOS DO MÊS**\n\n"
+            "🔧 **Funcionalidade em desenvolvimento**\n\n"
+            "💡 Em breve você poderá ver seus gastos organizados por mês!",
+            reply_markup=gastos_keyboard()
+        )
+        return ConversationHandler.END
+        
+    elif text == '📋 Categorias':
+        await update.message.reply_text(
+            "📋 **CATEGORIAS**\n\n"
+            "🔧 **Funcionalidade em desenvolvimento**\n\n"
+            "💡 Em breve você poderá gerenciar suas categorias personalizadas!",
+            reply_markup=gastos_keyboard()
+        )
         return ConversationHandler.END
 
     # Configurações

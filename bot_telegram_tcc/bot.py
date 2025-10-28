@@ -1,4 +1,4 @@
-# bot.py
+# bot.py - VERSÃO FINAL CORRIGIDA
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackQueryHandler
 import config
 import database as db
@@ -44,7 +44,7 @@ def main():
         print(f"❌ Erro ao criar aplicação: {e}")
         return
 
-    # Conversation Handler para o fluxo de cadastro e gastos
+    # Conversation Handler para CADASTRO INICIAL
     cadastro_conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', h.start)],
         states={
@@ -66,10 +66,36 @@ def main():
         fallbacks=[CommandHandler('cancel', h.cancel)],
         allow_reentry=True,
         per_user=True,
-        per_chat=True
+        per_chat=True,
+        name="cadastro_conv"
     )
 
-    # Conversation Handler para configurações
+    # Conversation Handler para REGISTRAR GASTOS (após cadastro)
+    gastos_conv_handler = ConversationHandler(
+        entry_points=[
+            MessageHandler(filters.Regex(r'^(🏠 Gastos Fixos|🛍️ Gastos Flexíveis)$'), h.iniciar_registro_gasto)
+        ],
+        states={
+            h.CATEGORIA_FIXA: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.categoria_fixa_handler)],
+            h.CATEGORIA_FLEXIVEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.categoria_flexivel_handler)],
+            h.NOVA_CATEGORIA_FIXA: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.nova_categoria_fixa_handler)],
+            h.NOVA_CATEGORIA_FLEXIVEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.nova_categoria_flexivel_handler)],
+            h.VALOR_GASTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.valor_gasto_handler)],
+            h.DATA_GASTO: [
+                CallbackQueryHandler(h.Calendar.handle_callback, pattern='^CAL_'),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, h.handle_date_input)
+            ],
+            h.CONTINUAR_GASTOS: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.continuar_gastos_handler)],
+            h.RESUMO_GASTOS: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.resumo_gastos_handler)],
+        },
+        fallbacks=[CommandHandler('cancel', h.cancel)],
+        allow_reentry=True,
+        per_user=True,
+        per_chat=True,
+        name="gastos_conv"
+    )
+
+    # Conversation Handler para CONFIGURAÇÕES
     config_conv_handler = ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex(r'^(✏️ Editar Perfil|💰 Alterar Salário|🔄 Redefinir)$'), h.main_menu_handler)
@@ -82,10 +108,11 @@ def main():
         fallbacks=[CommandHandler('cancel', h.cancel)],
         allow_reentry=True,
         per_user=True,
-        per_chat=True
+        per_chat=True,
+        name="config_conv"
     )
 
-    # Conversation Handler para objetivos
+    # Conversation Handler para OBJETIVOS
     goals_conv_handler = ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex(r'^(🎯 Adicionar Objetivo)$'), h.main_menu_handler)
@@ -99,11 +126,13 @@ def main():
         fallbacks=[CommandHandler('cancel', h.cancel)],
         allow_reentry=True,
         per_user=True,
-        per_chat=True
+        per_chat=True,
+        name="goals_conv"
     )
 
-    # Adicionar handlers
+    # Adicionar handlers NA ORDEM CORRETA
     application.add_handler(cadastro_conv_handler)
+    application.add_handler(gastos_conv_handler)
     application.add_handler(config_conv_handler)
     application.add_handler(goals_conv_handler)
     
@@ -111,8 +140,9 @@ def main():
     application.add_handler(CommandHandler("analisar", h.analisar_command))
     application.add_handler(CommandHandler("resumo", h.resumo_command))
     application.add_handler(CommandHandler("menu", h.menu_command))
+    application.add_handler(CommandHandler("adicionar", h.adicionar_gastos_handler))
 
-    # Handler para menu principal (deve ser o ÚLTIMO)
+    # Handler para menu principal (DEVE SER O ÚLTIMO)
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND, 
         h.main_menu_handler
