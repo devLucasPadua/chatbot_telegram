@@ -39,6 +39,9 @@ def main():
     except Exception as e:
         print(f"Erro na inicialização do banco: {str(e)}")
         return
+    
+    # No início da função main(), após inicializar o banco:
+    db.create_sample_salaries(123456789)  # Use um user_id de teste
 
     # Criar aplicação
     try:
@@ -63,6 +66,74 @@ def main():
         name="cadastro_conv"
     )
     
+    # Conversation Handler para ADICIONAR SALÁRIO
+    add_salary_conv_handler = ConversationHandler(
+        entry_points=[
+            MessageHandler(filters.Regex(r'^(💵 Adicionar Salário)$'), h.add_salary_handler)
+        ],
+        states={
+            h.ADD_SALARY_ORIGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.add_salary_origin_handler)],
+            h.ADD_SALARY_VALUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.add_salary_value_handler)],
+        },
+        fallbacks=[CommandHandler('cancel', h.cancel)],
+        allow_reentry=True,
+        per_user=True,
+        per_chat=True,
+        name="add_salary_conv"
+    )
+
+    # Conversation Handler para ALTERAR SALÁRIOS
+    edit_salaries_conv_handler = ConversationHandler(
+        entry_points=[
+            MessageHandler(filters.Regex(r'^(✏️ Alterar Salários)$'), h.alterar_salarios_handler)
+        ],
+        states={
+            h.EDIT_SALARY_SELECT: [CallbackQueryHandler(h.edit_salary_select_handler, pattern='^edit_salary_|^cancel_edit_salary')],
+            h.EDIT_SALARY_ACTION: [CallbackQueryHandler(h.edit_salary_action_handler, pattern='^edit_origin|^edit_value|^make_principal|^delete_salary|^cancel_action')],
+            h.EDIT_SALARY_ORIGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.edit_salary_origin_handler)],
+            h.EDIT_SALARY_VALUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.edit_salary_value_handler)],
+        },
+        fallbacks=[CommandHandler('cancel', h.cancel)],
+        allow_reentry=True,
+        per_user=True,
+        per_chat=True,
+        name="edit_salaries_conv"
+    )
+    
+    # Conversation Handler para ADICIONAR RENDA EXTRA
+    add_extra_income_conv_handler = ConversationHandler(
+        entry_points=[
+            MessageHandler(filters.Regex(r'^(💵 Adicionar Renda Extra)$'), h.add_extra_income_handler)
+        ],
+        states={
+            h.ADD_EXTRA_INCOME_ORIGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.add_extra_income_origin_handler)],
+            h.ADD_EXTRA_INCOME_VALUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.add_extra_income_value_handler)],
+        },
+        fallbacks=[CommandHandler('cancel', h.cancel)],
+        allow_reentry=True,
+        per_user=True,
+        per_chat=True,
+        name="add_extra_income_conv"
+    )
+
+    # Conversation Handler para ALTERAR RENDAS EXTRAS
+    edit_extra_incomes_conv_handler = ConversationHandler(
+        entry_points=[
+            MessageHandler(filters.Regex(r'^(✏️ Alterar Rendas Extras)$'), h.alterar_rendas_extras_handler)
+        ],
+        states={
+            h.EDIT_EXTRA_INCOME_SELECT: [CallbackQueryHandler(h.edit_extra_income_select_handler, pattern='^edit_extra_income_|^cancel_edit_extra_income')],
+            h.EDIT_EXTRA_INCOME_ACTION: [CallbackQueryHandler(h.edit_extra_income_action_handler, pattern='^edit_extra_origin|^edit_extra_value|^delete_extra_income|^cancel_extra_action')],
+            h.EDIT_EXTRA_INCOME_ORIGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.edit_extra_income_origin_handler)],
+            h.EDIT_EXTRA_INCOME_VALUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.edit_extra_income_value_handler)],
+        },
+        fallbacks=[CommandHandler('cancel', h.cancel)],
+        allow_reentry=True,
+        per_user=True,
+        per_chat=True,
+        name="edit_extra_incomes_conv"
+    )
+
     # Conversation Handler para REGISTRAR GASTOS (após cadastro)
     gastos_conv_handler = ConversationHandler(
         entry_points=[
@@ -219,6 +290,12 @@ def main():
     application.add_handler(update_goal_conv_handler)
     application.add_handler(delete_goal_conv_handler)
     application.add_handler(gastos_mes_conv_handler)
+    application.add_handler(add_salary_conv_handler)
+    application.add_handler(edit_salaries_conv_handler)
+    # Adicione este handler para debug (pode remover depois)
+    application.add_handler(CommandHandler("salarios", h.consultar_salarios_handler))
+    application.add_handler(add_extra_income_conv_handler)
+    application.add_handler(edit_extra_incomes_conv_handler)
     
     # Comandos simples
     application.add_handler(CommandHandler("analisar", h.analise_detalhada_handler))
@@ -253,6 +330,22 @@ def main():
     # Handler para callbacks de módulos educativos
     application.add_handler(CallbackQueryHandler(h.handle_modulos_callback, pattern='^modulo_'))
     
+    # Adicione os handlers de salário ANTES do main_menu_handler
+    application.add_handler(add_salary_conv_handler)
+    application.add_handler(edit_salaries_conv_handler)
+
+    # E adicione este handler específico para as opções de salário:
+    application.add_handler(MessageHandler(
+        filters.Regex(r'^(📊 Consultar Salários)$'), 
+        h.consultar_salarios_handler
+    ))
+    
+    # Adicione também handlers específicos para as opções diretas:
+    application.add_handler(MessageHandler(
+        filters.Regex(r'^(📊 Consultar Rendas Extras)$'), 
+        h.consultar_rendas_extras_handler
+    ))
+
     # Handler para menu principal (DEVE SER O ÚLTIMO)
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND,

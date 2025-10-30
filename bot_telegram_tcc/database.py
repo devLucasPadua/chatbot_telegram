@@ -55,18 +55,139 @@ def init_db():
         salario_liquido REAL,
         data_alteracao TEXT)''')
         
+        # Na função init_db(), adicione:
+        c.execute('''CREATE TABLE IF NOT EXISTS salaries
+                    (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     user_id INTEGER,
+                     origem TEXT,
+                     valor REAL,
+                     principal INTEGER DEFAULT 0,
+                     data_criacao TEXT)''')
+                     
+        # Na função init_db(), adicione:
+        c.execute('''CREATE TABLE IF NOT EXISTS extra_incomes
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      user_id INTEGER,
+                      origem TEXT,
+                      valor REAL,
+                      data_criacao TEXT)''')
+        
         conn.commit()
         conn.close()
         
         # Atualizar estrutura da tabela goals se necessário
         update_goals_table()
         
+        logger.info("✅ Tabela 'salaries' verificada/criada com sucesso!")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Erro ao inicializar banco de dados: {e}")
+        return False
+        
         logger.info("Banco de dados SQLite inicializado com sucesso!")
         return True
     except Exception as e:
         logger.error(f"Erro ao inicializar banco de dados: {e}")
         return False
+        
+# Função auxiliar para debug
+def debug_salaries(user_id):
+    """Função de debug para verificar salários"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT * FROM salaries WHERE user_id=?", (user_id,))
+        result = c.fetchall()
+        conn.close()
+        print(f"DEBUG Salários para user {user_id}: {result}")
+        return result
+    except Exception as e:
+        print(f"DEBUG Erro: {e}")
+        return []
 
+def create_sample_salaries(user_id):
+    """Cria salários de exemplo para testes"""
+    try:
+        # Salário principal
+        add_salary(user_id, "Salário Principal", 3000.00, principal=True)
+        # Salários extras
+        add_salary(user_id, "Freelance", 800.00, principal=False)
+        add_salary(user_id, "Aluguel", 1200.00, principal=False)
+        print("✅ Salários de exemplo criados!")
+        return True
+    except Exception as e:
+        print(f"❌ Erro ao criar salários de exemplo: {e}")
+        return False
+   
+def add_extra_income(user_id, origem, valor):
+    """Adiciona uma nova renda extra"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("INSERT INTO extra_incomes (user_id, origem, valor, data_criacao) VALUES (?, ?, ?, ?)",
+                 (user_id, origem, valor, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao adicionar renda extra: {e}")
+        return False
+
+def get_extra_incomes(user_id):
+    """Obtém todas as rendas extras do usuário"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT id, origem, valor, data_criacao FROM extra_incomes WHERE user_id=? ORDER BY data_criacao DESC", (user_id,))
+        result = c.fetchall()
+        conn.close()
+        
+        incomes = []
+        for row in result:
+            incomes.append({
+                'id': row[0],
+                'origem': row[1],
+                'valor': row[2],
+                'data_criacao': row[3]
+            })
+        return incomes
+    except Exception as e:
+        logger.error(f"Erro ao obter rendas extras: {e}")
+        return []
+
+def update_extra_income(income_id, origem=None, valor=None):
+    """Atualiza uma renda extra"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        
+        if origem and valor:
+            c.execute("UPDATE extra_incomes SET origem=?, valor=? WHERE id=?", (origem, valor, income_id))
+        elif origem:
+            c.execute("UPDATE extra_incomes SET origem=? WHERE id=?", (origem, income_id))
+        elif valor:
+            c.execute("UPDATE extra_incomes SET valor=? WHERE id=?", (valor, income_id))
+            
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao atualizar renda extra: {e}")
+        return False
+
+def delete_extra_income(income_id):
+    """Exclui uma renda extra"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("DELETE FROM extra_incomes WHERE id=?", (income_id,))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao excluir renda extra: {e}")
+        return False
+        
 def add_user(user_id, nickname, salario_liquido=None):
     """Adiciona ou atualiza um usuário"""
     try:
@@ -484,6 +605,129 @@ def delete_custom_category(user_id, tipo, nome_categoria):
         return True
     except Exception as e:
         logger.error(f"Erro ao excluir categoria personalizada: {e}")
+        return False
+
+# Adicione estas funções ao database.py
+
+def add_salary(user_id, origem, valor, principal=False):
+    """Adiciona um novo salário"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        
+        # Se for principal, remover o status de principal dos outros salários
+        if principal:
+            c.execute("UPDATE salaries SET principal = 0 WHERE user_id = ?", (user_id,))
+        
+        c.execute("INSERT INTO salaries (user_id, origem, valor, principal, data_criacao) VALUES (?, ?, ?, ?, ?)",
+                 (user_id, origem, valor, 1 if principal else 0, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao adicionar salário: {e}")
+        return False
+
+def get_salaries(user_id):
+    """Obtém todos os salários do usuário"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT id, origem, valor, principal, data_criacao FROM salaries WHERE user_id=? ORDER BY principal DESC, data_criacao DESC", (user_id,))
+        result = c.fetchall()
+        conn.close()
+        
+        salaries = []
+        for row in result:
+            salaries.append({
+                'id': row[0],
+                'origem': row[1],
+                'valor': row[2],
+                'principal': bool(row[3]),
+                'data_criacao': row[4]
+            })
+        return salaries
+    except Exception as e:
+        logger.error(f"Erro ao obter salários: {e}")
+        return []
+
+def get_principal_salary(user_id):
+    """Obtém o salário principal do usuário"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT origem, valor FROM salaries WHERE user_id=? AND principal=1", (user_id,))
+        result = c.fetchone()
+        conn.close()
+        
+        if result:
+            return {
+                'origem': result[0],
+                'valor': result[1]
+            }
+        return None
+    except Exception as e:
+        logger.error(f"Erro ao obter salário principal: {e}")
+        return None
+
+def update_salary(salary_id, origem=None, valor=None):
+    """Atualiza um salário"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        
+        if origem and valor:
+            c.execute("UPDATE salaries SET origem=?, valor=? WHERE id=?", (origem, valor, salary_id))
+        elif origem:
+            c.execute("UPDATE salaries SET origem=? WHERE id=?", (origem, salary_id))
+        elif valor:
+            c.execute("UPDATE salaries SET valor=? WHERE id=?", (valor, salary_id))
+            
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao atualizar salário: {e}")
+        return False
+
+def delete_salary(salary_id):
+    """Exclui um salário (não permite excluir o principal)"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        
+        # Verificar se é principal
+        c.execute("SELECT principal FROM salaries WHERE id=?", (salary_id,))
+        result = c.fetchone()
+        
+        if result and result[0] == 1:
+            return False  # Não permite excluir o principal
+            
+        c.execute("DELETE FROM salaries WHERE id=?", (salary_id,))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao excluir salário: {e}")
+        return False
+
+def set_principal_salary(salary_id, user_id):
+    """Define um salário como principal"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        
+        # Remover principal de todos os salários do usuário
+        c.execute("UPDATE salaries SET principal = 0 WHERE user_id = ?", (user_id,))
+        
+        # Definir o novo salário como principal
+        c.execute("UPDATE salaries SET principal = 1 WHERE id = ?", (salary_id,))
+        
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao definir salário principal: {e}")
         return False
         
 def add_salary_history(user_id, salario_liquido):
