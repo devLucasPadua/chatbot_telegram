@@ -6,7 +6,8 @@ import database as db
 from datetime import datetime, timedelta
 import logging
 import random
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
+import hashlib
 
 logger = logging.getLogger(__name__)
 
@@ -18,51 +19,88 @@ class FinanceCoach:
         self.session = None
         self._response_cache = {}
         self._cache_timeout = 1800  # 30 minutos em segundos
-        # Cache de fallback para evitar chamadas repetidas à API
         self._fallback_cache = {}
         
+        # Configurações de timeout da API (agora vindas do config)
+        self.timeout_config = aiohttp.ClientTimeout(
+            total=config.API_TIMEOUT_TOTAL, 
+            connect=config.API_TIMEOUT_CONNECT
+        )
+        self.max_retries = config.API_MAX_RETRIES
+        self.retry_delay = config.API_RETRY_DELAY
+        
+        self.max_tokens_short = 80
+        self.max_tokens_medium = 120
+        self.max_tokens_long = 200
+        
+        # Sistema de prompts pré-definidos
+        self._setup_prompts()
+        
+    def _setup_prompts(self):
+        """Configura prompts pré-definidos para melhor performance"""
+        self.system_prompt = "Você é Edu, um coach financeiro brasileiro. Seja DIRETO, PRÁTICO e OBJETIVO. Use no máximo 3 parágrafos. Foque em ações concretas."
+        
+        self.context_prompts = {
+            'apos_salario': "Dê uma dica prática para {nickname} administrar o salário de forma inteligente. Seja breve e motivador:",
+            'apos_gasto': "Ajude {nickname} a refletir sobre consumo consciente após registrar um gasto. Uma frase inspiradora:",
+            'apos_analise': "Com base na situação financeira de {nickname} ({nivel}), dê um conselho específico e encorajador:",
+            'incentivo': "{nickname} está aprendendo sobre finanças. Dê uma mensagem motivacional curta:",
+            'economia': "Dica prática de economia para {nickname} implementar hoje mesmo:",
+            'geral': "Dê um conselho financeiro útil e prático para {nickname}. Seja breve:"
+        }
+        
+        self.learning_topics = {
+            'orcamento': "Explique de forma simples como fazer um orçamento pessoal em uma frase prática:",
+            'emergencia': "Dê uma dica rápida sobre como criar um fundo de emergência de forma acessível:",
+            'dividas': "Um conselho motivacional para quem está organizando dívidas:",
+            'investimentos': "Explique por que investir é importante de forma simples e inspiradora:",
+            'habitos': "Compartilhe um hábito financeiro simples que traz grandes resultados:"
+        }
+
+    def _generate_cache_key(self, text: str, max_tokens: int = None) -> str:
+        """Gera chave de cache mais eficiente"""
+        base_string = text + (str(max_tokens) if max_tokens else "")
+        return hashlib.md5(base_string.encode()).hexdigest()
+        
     async def ensure_session(self):
-        """Garante que temos uma sessão HTTP aberta com timeout otimizado"""
+        """Garante que temos uma sessão HTTP aberta"""
         if self.session is None or self.session.closed:
-            # Timeout mais agressivo: 8 segundos no total, 5 segundos de conexão
-            timeout = aiohttp.ClientTimeout(total=8, connect=5)
-            self.session = aiohttp.ClientSession(timeout=timeout)
+            connector = aiohttp.TCPConnector(limit=10, limit_per_host=5)
+            self.session = aiohttp.ClientSession(
+                timeout=self.timeout_config,
+                connector=connector
+            )
             
-    async def _call_deepseek_api(self, prompt: str, max_tokens: int = 120) -> Optional[str]:
-        """Faz chamada otimizada para a API do DeepSeek com fallback rápido"""
-        # LOG DO PROMPT ENVIADO
+    async def _call_deepseek_api(self, prompt: str, max_tokens: int = None) -> Optional[str]:
+        """Faz chamada otimizada para a API do DeepSeek"""
+        if max_tokens is None:
+            max_tokens = self.max_tokens_medium
+            
         logger.info(f"🤖 PROMPT ENVIADO PARA IA ({max_tokens} tokens): {prompt[:200]}...")
         
-        # Verificar cache primeiro
-        cache_key = hash(prompt + str(max_tokens))
+        # Verificar cache
+        cache_key = self._generate_cache_key(prompt, max_tokens)
         if cache_key in self._response_cache:
             cached_time, response = self._response_cache[cache_key]
             if (datetime.now() - cached_time).seconds < self._cache_timeout:
                 logger.info("✅ Resposta obtida do cache")
                 return response
         
-        # Verificar se API key está configurada
-        if not self.api_key or self.api_key == "SUA_KEY_AQUI":
-            logger.info("❌ API key não configurada, usando fallback")
+        # Verificar se API key está configurada corretamente
+        if not self.api_key or self.api_key in ["SUA_KEY", "SUA_KEY_AQUI", "SUA_CHAVE_API"]:
+            logger.warning("❌ API key não configurada ou está com valor padrão, usando fallback")
             return await self._get_fallback_response(prompt)
         
         await self.ensure_session()
         
-        # Payload otimizado para respostas mais rápidas
         payload = {
             "model": "deepseek-chat",
             "messages": [
-                {
-                    "role": "system",
-                    "content": "Você é Edu, um coach financeiro brasileiro. Seja DIRETO, PRÁTICO e OBJETIVO. Use no máximo 3 parágrafos. Foque em ações concretas."
-                },
-                {
-                    "role": "user", 
-                    "content": prompt
-                }
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": prompt}
             ],
             "temperature": 0.7,
-            "max_tokens": max_tokens,  # Reduzido para respostas mais curtas
+            "max_tokens": max_tokens,
             "stream": False
         }
         
@@ -71,219 +109,235 @@ class FinanceCoach:
             "Content-Type": "application/json"
         }
         
-        try:
-            # LOG DA TENTATIVA DE CHAMADA
-            logger.info(f"🌐 Chamando API DeepSeek...")
-            
-            # Timeout mais agressivo com fallback rápido
-            async with self.session.post(self.base_url, json=payload, headers=headers) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    result = data['choices'][0]['message']['content'].strip()
-                    
-                    # LOG DA RESPOSTA RECEBIDA
-                    logger.info(f"✅ RESPOSTA DA IA ({len(result)} caracteres): {result[:150]}...")
-                    
-                    # Cache da resposta
-                    self._response_cache[cache_key] = (datetime.now(), result)
-                    return result
-                else:
-                    error_text = await response.text()
-                    logger.warning(f"❌ API retornou status {response.status}: {error_text}")
-                    return await self._get_fallback_response(prompt)
+        # Sistema de retry com backoff
+        for attempt in range(self.max_retries + 1):
+            try:
+                logger.info(f"🌐 Tentativa {attempt + 1} de {self.max_retries + 1} para API DeepSeek...")
                 
-        except asyncio.TimeoutError:
-            logger.warning("⏰ Timeout na chamada da API - usando fallback")
-            return await self._get_fallback_response(prompt)
-        except Exception as e:
-            logger.error(f"🚨 Erro na API: {str(e)}")
-            return await self._get_fallback_response(prompt)
+                async with self.session.post(self.base_url, json=payload, headers=headers) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        result = data['choices'][0]['message']['content'].strip()
+                        
+                        logger.info(f"✅ RESPOSTA DA IA ({len(result)} caracteres): {result[:150]}...")
+                        
+                        # Cache da resposta
+                        self._response_cache[cache_key] = (datetime.now(), result)
+                        return result
+                    else:
+                        error_text = await response.text()
+                        logger.warning(f"❌ API retornou status {response.status}: {error_text}")
+                        
+                        # Se for erro do cliente (4xx), não tente novamente
+                        if 400 <= response.status < 500:
+                            break
+                        # Se for erro do servidor (5xx), tente novamente
+                        else:
+                            logger.info(f"🔄 Erro {response.status}, tentando novamente...")
+                            
+            except asyncio.TimeoutError:
+                logger.warning(f"⏰ Timeout na tentativa {attempt + 1}")
+                if attempt < self.max_retries:
+                    wait_time = self.retry_delay * (2 ** attempt)  # Exponential backoff
+                    logger.info(f"🕒 Aguardando {wait_time}s antes da próxima tentativa")
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.error("🚨 Todas as tentativas falharam por timeout")
+                    break
+                    
+            except aiohttp.ClientConnectorError as e:
+                logger.error(f"🔌 Erro de conexão: {e}")
+                if attempt < self.max_retries:
+                    await asyncio.sleep(self.retry_delay)
+                else:
+                    break
+                    
+            except Exception as e:
+                logger.error(f"🚨 Erro inesperado na API: {str(e)}")
+                break
+        
+        # Se chegou aqui, todas as tentativas falharam
+        logger.info("🔄 Todas as tentativas falharam, usando fallback")
+        return await self._get_fallback_response(prompt)
     
     async def _get_fallback_response(self, prompt: str) -> str:
-        """Respostas fallback otimizadas e contextualizadas"""
+        """Respostas fallback otimizadas"""
         logger.info("🔄 Usando resposta de fallback")
         prompt_lower = prompt.lower()
         
-        # Cache de fallback para evitar processamento repetido
-        fallback_key = hash(prompt_lower)
+        fallback_key = self._generate_cache_key(prompt_lower)
         if fallback_key in self._fallback_cache:
             return self._fallback_cache[fallback_key]
         
-        # Respostas pré-definidas otimizadas por categoria
+        # Categorias e respostas otimizadas
+        category_keywords = {
+            'salario': ['salário', 'salario', 'receber', 'renda', 'ordenado'],
+            'gasto': ['gasto', 'gastar', 'comprar', 'compra', 'despesa'],
+            'economia': ['economia', 'economizar', 'poupar', 'guardar', 'poupança'],
+            'divida': ['dívida', 'divida', 'emprestimo', 'empréstimo', 'cartão'],
+            'investimento': ['investimento', 'investir', 'aplicação', 'aplicar'],
+            'meta': ['meta', 'objetivo', 'sonho', 'conseguir']
+        }
+        
         fallback_responses = {
             'salario': [
-                "💰 **Estratégia Salarial:** Separe 20% do seu salário assim que receber para poupança automática. O restante divida entre necessidades (50%) e desejos (30%).",
-                "🎯 **Primeiros Passos:** Ao receber o salário, priorize: 1) Contas essenciais, 2) Reserva de emergência, 3) Metas financeiras. Deixe os gastos flexíveis por último.",
-                "💡 **Dica Rápida:** Crie o hábito de revisar seu orçamento no mesmo dia que recebe o salário. 15 minutos de planeamento evitam surpresas no mês."
+                "💰 **Estratégia Salarial:** Separe 20% do seu salário assim que receber para poupança automática.",
+                "🎯 **Primeiros Passos:** Ao receber o salário, priorize: 1) Contas essenciais, 2) Reserva de emergência.",
+                "💡 **Dica Rápida:** Crie o hábito de revisar seu orçamento no mesmo dia que recebe o salário."
             ],
             'gasto': [
-                "🤔 **Antes de Gastar:** Pergunte-se: 'Preciso disso agora?' e 'Há alternativas mais econômicas?'. Muitas compras impulsivas são evitadas com 24h de reflexão.",
-                "🎯 **Controle de Gastos:** Use a regra 50-30-20: 50% necessidades, 30% desejos, 20% poupança. Revise semanalmente seus gastos para ajustes.",
-                "💡 **Economia Inteligente:** Identifique 3 gastos não essenciais que pode reduzir este mês. Pequenos cortes geram grandes economias anuais."
+                "🤔 **Antes de Gastar:** Pergunte-se: 'Preciso disso agora?' e 'Há alternativas mais econômicas?'",
+                "🎯 **Controle de Gastos:** Use a regra 50-30-20: 50% necessidades, 30% desejos, 20% poupança.",
+                "💡 **Economia Inteligente:** Identifique 3 gastos não essenciais que pode reduzir este mês."
             ],
             'economia': [
-                "🚀 **Micro-economias:** Economizar R$10 por dia = R$300/mês = R$3.600/ano! Pequenos hábitos constroem grandes patrimônios.",
-                "📱 **Corte de Assinaturas:** Reveja todas as assinaturas mensais. Cancele pelo menos uma que não usa regularmente.",
-                "🍲 **Alimentação:** Reduza 2 deliveries por semana = economia de ~R$200/mês. Cozinhar em casa é mais saudável e econômico."
+                "🚀 **Micro-economias:** Economizar R$10 por dia = R$300/mês! Pequenos hábitos constroem grandes patrimônios.",
+                "📱 **Corte de Assinaturas:** Reveja todas as assinaturas mensais. Cancele pelo menos uma não utilizada.",
+                "🍲 **Alimentação:** Reduza 2 deliveries por semana = economia de ~R$200/mês."
             ],
             'divida': [
-                "🎯 **Estratégia de Dívidas:** Foque na dívida com maior juros primeiro (cartão de crédito). Negocie prazos maiores para as outras.",
-                "💡 **Plano de Pagamento:** Liste todas as dívidas por valor e juros. Estabeleça um plano de pagamento agressivo para a mais crítica.",
-                "🔄 **Reorganização:** Considere um empréstimo com juros menores para quitar dívidas de juros altos, mas discipline-se para não criar novas dívidas."
+                "🎯 **Estratégia de Dívidas:** Foque na dívida com maior juros primeiro (cartão de crédito).",
+                "💡 **Plano de Pagamento:** Liste todas as dívidas por valor e juros. Estabeleça um plano agressivo.",
+                "🔄 **Reorganização:** Considere um empréstimo com juros menores para quitar dívidas de juros altos."
             ],
             'investimento': [
-                "💰 **Primeiros Investimentos:** Comece com a reserva de emergência (6 meses de gastos). Depois, explore Tesouro Direto e fundos de baixo risco.",
-                "🎯 **Estratégia Conservadora:** Para iniciantes: 70% em renda fixa (Tesouro, CDB), 30% em renda variável (ações, fundos). Ajuste conforme seu perfil.",
-                "💡 **Dica Inicial:** Invista regularmente (mesmo valores pequenos) e pense no longo prazo. Juros compostos são seus maiores aliados."
+                "💰 **Primeiros Investimentos:** Comece com a reserva de emergência (6 meses de gastos).",
+                "🎯 **Estratégia Conservadora:** Para iniciantes: 70% em renda fixa, 30% em renda variável.",
+                "💡 **Dica Inicial:** Invista regularmente (mesmo valores pequenos) e pense no longo prazo."
             ],
             'meta': [
-                "🎯 **Metas SMART:** Seja Específico, Mensurável, Atingível, Relevante e Temporal. Ex: 'Economizar R$5.000 para emergência em 10 meses'.",
-                "💡 **Quebra de Metas:** Divida metas grandes em etapas mensais. Economizar R$500/mês parece mais fácil que R$6.000/ano.",
-                "📊 **Acompanhamento:** Revise o progresso das suas metas toda semana. Celebre pequenas vitórias para manter a motivação."
+                "🎯 **Metas SMART:** Seja Específico, Mensurável, Atingível, Relevante e Temporal.",
+                "💡 **Quebra de Metas:** Divida metas grandes em etapas mensais.",
+                "📊 **Acompanhamento:** Revise o progresso das suas metas toda semana."
             ],
             'geral': [
-                "💡 **Hábito Financeiro:** Reserve 10 minutos por semana para revisar seus gastos. Consistência é mais importante que perfeição.",
-                "🎯 **Foco no Essencial:** Priorize construir uma reserva de emergência antes de investimentos complexos. Segurança primeiro, crescimento depois.",
-                "💰 **Mentalidade:** Educação financeira não é sobre restrição, mas sobre fazer seu dinheiro trabalhar para você. Cada decisão conta."
+                "💡 **Hábito Financeiro:** Reserve 10 minutos por semana para revisar seus gastos.",
+                "🎯 **Foco no Essencial:** Priorize construir uma reserva de emergência antes de investimentos complexos.",
+                "💰 **Mentalidade:** Educação financeira é sobre fazer seu dinheiro trabalhar para você."
             ]
         }
         
-        # Identificação mais precisa da categoria
-        if any(word in prompt_lower for word in ['salário', 'salario', 'receber', 'renda', 'ordenado']):
-            response = random.choice(fallback_responses['salario'])
-        elif any(word in prompt_lower for word in ['gasto', 'gastar', 'comprar', 'compra', 'despesa']):
-            response = random.choice(fallback_responses['gasto'])
-        elif any(word in prompt_lower for word in ['economia', 'economizar', 'poupar', 'guardar', 'poupança']):
-            response = random.choice(fallback_responses['economia'])
-        elif any(word in prompt_lower for word in ['dívida', 'divida', 'emprestimo', 'empréstimo', 'cartão']):
-            response = random.choice(fallback_responses['divida'])
-        elif any(word in prompt_lower for word in ['investimento', 'investir', 'aplicação', 'aplicar']):
-            response = random.choice(fallback_responses['investimento'])
-        elif any(word in prompt_lower for word in ['meta', 'objetivo', 'sonho', 'conseguir']):
-            response = random.choice(fallback_responses['meta'])
-        else:
-            response = random.choice(fallback_responses['geral'])
+        # Identificação de categoria
+        selected_category = 'geral'
+        for category, keywords in category_keywords.items():
+            if any(keyword in prompt_lower for keyword in keywords):
+                selected_category = category
+                break
         
-        # Cache da resposta de fallback
+        response = random.choice(fallback_responses[selected_category])
         self._fallback_cache[fallback_key] = response
         return response
 
     def analyze_financial_health(self, user_id: int) -> Dict:
-        """Analisa a saúde financeira do usuário com base nos gastos"""
+        """Analisa a saúde financeira do usuário"""
         try:
             user_data = db.get_user_data(user_id)
             if not user_data:
                 return self._get_default_analysis()
             
             expenses = db.get_monthly_expenses(user_id)
-            salario = user_data['salario_liquido'] or 0
+            salario = user_data.get('salario_liquido', 0)
             
-            total_fixo = 0
-            total_flexivel = 0
-            
-            if expenses['fixo']:
-                for categoria, subcategorias in expenses['fixo'].items():
-                    for subcat, valor in subcategorias.items():
-                        total_fixo += valor
-                        
-            if expenses['flexivel']:
-                for categoria, subcategorias in expenses['flexivel'].items():
-                    for subcat, valor in subcategorias.items():
-                        total_flexivel += valor
-                        
+            total_fixo = self._calculate_total_expenses(expenses['fixo'])
+            total_flexivel = self._calculate_total_expenses(expenses['flexivel'])
             total_geral = total_fixo + total_flexivel
             
             if salario <= 0:
-                return {
-                    'nivel': 'inicial',
-                    'mensagem': '💡 Vamos começar organizando sua renda! Que tal definir seu salário primeiro?',
-                    'recomendacao': 'Configure sua renda mensal para uma análise mais precisa.',
-                    'saldo': 0,
-                    'percentual_gastos': 0,
-                    'total_fixo': total_fixo,
-                    'total_flexivel': total_flexivel,
-                    'total_geral': total_geral
-                }
+                return self._build_analysis_response('inicial', total_fixo, total_flexivel, total_geral, 
+                                                   "💡 Vamos começar organizando sua renda! Que tal definir seu salário primeiro?",
+                                                   "Configure sua renda mensal para uma análise mais precisa.",
+                                                   salario, total_geral)
             
             saldo = salario - total_geral
             percentual_gastos = (total_geral / salario) * 100 if salario > 0 else 0
             
             if total_geral == 0:
-                nivel = 'inicial'
-                mensagem = '🎯 Ótimo começo! Agora vamos registrar seus primeiros gastos.'
-                recomendacao = 'Comece adicionando seus gastos fixos essenciais.'
+                return self._build_analysis_response('inicial', total_fixo, total_flexivel, total_geral,
+                                                   "🎯 Ótimo começo! Agora vamos registrar seus primeiros gastos.",
+                                                   "Comece adicionando seus gastos fixos essenciais.",
+                                                   salario, total_geral, saldo, percentual_gastos)
                 
             elif percentual_gastos <= 60:
-                nivel = 'saudavel'
-                mensagem = '✅ Excelente! Suas finanças estão equilibradas.'
-                recomendacao = 'Mantenha esse controle e pense em investir o excedente.'
+                return self._build_analysis_response('saudavel', total_fixo, total_flexivel, total_geral,
+                                                   "✅ Excelente! Suas finanças estão equilibradas.",
+                                                   "Mantenha esse controle e pense em investir o excedente.",
+                                                   salario, total_geral, saldo, percentual_gastos)
                 
             elif percentual_gastos <= 85:
-                nivel = 'atencao'
-                mensagem = '⚠️ Fique atento! Seus gastos estão chegando no limite.'
-                recomendacao = 'Revise gastos flexíveis e identifique economias possíveis.'
+                return self._build_analysis_response('atencao', total_fixo, total_flexivel, total_geral,
+                                                   "⚠️ Fique atento! Seus gastos estão chegando no limite.",
+                                                   "Revise gastos flexíveis e identifique economias possíveis.",
+                                                   salario, total_geral, saldo, percentual_gastos)
                 
             else:
-                nivel = 'critico'
-                mensagem = '🚨 Atenção! Você está gastando mais do que ganha.'
-                recomendacao = 'Priorize gastos essenciais e reveja seu orçamento urgentemente.'
+                return self._build_analysis_response('critico', total_fixo, total_flexivel, total_geral,
+                                                   "🚨 Atenção! Você está gastando mais do que ganha.",
+                                                   "Priorize gastos essenciais e reveja seu orçamento urgentemente.",
+                                                   salario, total_geral, saldo, percentual_gastos)
                 
-            return {
-                'nivel': nivel,
-                'mensagem': mensagem,
-                'recomendacao': recomendacao,
-                'saldo': saldo,
-                'percentual_gastos': percentual_gastos,
-                'total_fixo': total_fixo,
-                'total_flexivel': total_flexivel,
-                'total_geral': total_geral
-            }
-            
         except Exception as e:
             logger.error(f"Erro na análise financeira: {e}")
             return self._get_default_analysis()
     
+    def _calculate_total_expenses(self, expenses_dict: Dict) -> float:
+        """Calcula o total de gastos de um dicionário de despesas"""
+        if not expenses_dict:
+            return 0
+            
+        total = 0
+        for subcategorias in expenses_dict.values():
+            if isinstance(subcategorias, dict):
+                for valor in subcategorias.values():
+                    if isinstance(valor, (int, float)):
+                        total += valor
+        return total
+    
+    def _build_analysis_response(self, nivel: str, total_fixo: float, total_flexivel: float, 
+                               total_geral: float, mensagem: str, recomendacao: str,
+                               salario: float = 0, total_gastos: float = 0, 
+                               saldo: float = 0, percentual_gastos: float = 0) -> Dict:
+        """Constrói resposta padronizada de análise"""
+        return {
+            'nivel': nivel,
+            'mensagem': mensagem,
+            'recomendacao': recomendacao,
+            'saldo': saldo,
+            'percentual_gastos': percentual_gastos,
+            'total_fixo': total_fixo,
+            'total_flexivel': total_flexivel,
+            'total_geral': total_geral,
+            'salario': salario,
+            'total_gastos': total_gastos
+        }
+    
     def _get_default_analysis(self) -> Dict:
         """Retorna análise padrão para casos de erro"""
-        return {
-            'nivel': 'inicial',
-            'mensagem': '💡 Vamos começar sua jornada financeira!',
-            'recomendacao': 'Adicione seu salário e primeiros gastos para uma análise personalizada.',
-            'saldo': 0,
-            'percentual_gastos': 0,
-            'total_fixo': 0,
-            'total_flexivel': 0,
-            'total_geral': 0
-        }
+        return self._build_analysis_response(
+            'inicial', 0, 0, 0,
+            '💡 Vamos começar sua jornada financeira!',
+            'Adicione seu salário e primeiros gastos para uma análise personalizada.'
+        )
     
     async def get_personalized_tip(self, user_id: int, context: str = "geral") -> str:
         """Retorna uma dica personalizada baseada no contexto"""
         try:
             analysis = self.analyze_financial_health(user_id)
             user_data = db.get_user_data(user_id)
-            nickname = user_data['nickname'] if user_data else "Amigo"
+            nickname = user_data.get('nickname', "Amigo") if user_data else "Amigo"
             
-            context_prompts = {
-                'apos_salario': f"Dê uma dica prática para {nickname} administrar o salário de forma inteligente. Seja breve e motivador:",
-                'apos_gasto': f"Ajude {nickname} a refletir sobre consumo consciente após registrar um gasto. Uma frase inspiradora:",
-                'apos_analise': f"Com base na situação financeira de {nickname} ({analysis['nivel']}), dê um conselho específico e encorajador:",
-                'incentivo': f"{nickname} está aprendendo sobre finanças. Dê uma mensagem motivacional curta:",
-                'economia': f"Dica prática de economia para {nickname} implementar hoje mesmo:",
-                'geral': f"Dê um conselho financeiro útil e prático para {nickname}. Seja breve:"
-            }
-            
-            prompt = context_prompts.get(context, context_prompts['geral'])
+            prompt_template = self.context_prompts.get(context, self.context_prompts['geral'])
+            prompt = prompt_template.format(nickname=nickname, nivel=analysis['nivel'])
             
             if context == 'apos_analise' and analysis['nivel'] != 'inicial':
                 prompt += f" Situação: {analysis['mensagem']}"
                 
-            response = await self._call_deepseek_api(prompt, max_tokens=80)
+            response = await self._call_deepseek_api(prompt, max_tokens=self.max_tokens_short)
             return response
             
         except Exception as e:
             logger.error(f"Erro ao obter dica personalizada: {e}")
             return await self._get_fallback_response("dica motivacional")
-    
+
     async def get_personalized_recommendations(self, user_id: int) -> str:
         """Obtém recomendações personalizadas de forma otimizada"""
         logger.info(f"🎯 Iniciando recomendações personalizadas para usuário {user_id}")
@@ -293,34 +347,28 @@ class FinanceCoach:
                 logger.warning("❌ Usuário não encontrado para recomendações")
                 return self._get_quick_fallback_recommendations()
             
-            # Análise rápida sem detalhamento excessivo
-            expenses = db.get_monthly_expenses(user_id)
             analysis = self.analyze_financial_health(user_id)
-            
-            total_fixo = analysis.get('total_fixo', 0)
-            total_flexivel = analysis.get('total_flexivel', 0)
-            total_geral = analysis.get('total_geral', 0)
             salario = user_data.get('salario_liquido', 0)
-            saldo = salario - total_geral
-            percentual_gastos = analysis.get('percentual_gastos', 0)
             
-            # Prompt mais direto e objetivo
-            prompt = f"""
-            Dados financeiros RESUMIDOS:
-            - Salário: R$ {salario:,.0f}
-            - Gastos totais: R$ {total_geral:,.0f} ({percentual_gastos:.0f}% do salário)
-            - Saldo: R$ {saldo:,.0f}
-            - Saúde: {analysis['nivel']}
-            
-            Forneça 3-4 recomendações PRÁTICAS e DIRETAS. Seja objetivo e focando em ações imediatas.
-            """
-            
-            response = await self._call_deepseek_api(prompt, max_tokens=150)
+            prompt = self._build_recommendation_prompt(analysis, salario)
+            response = await self._call_deepseek_api(prompt, max_tokens=self.max_tokens_medium)
             return response or self._get_quick_fallback_recommendations()
             
         except Exception as e:
             logger.error(f"Erro otimizado nas recomendações: {e}")
             return self._get_quick_fallback_recommendations()
+    
+    def _build_recommendation_prompt(self, analysis: Dict, salario: float) -> str:
+        """Constrói prompt para recomendações"""
+        return f"""
+        Dados financeiros RESUMIDOS:
+        - Salário: R$ {salario:,.0f}
+        - Gastos totais: R$ {analysis.get('total_geral', 0):,.0f} ({analysis.get('percentual_gastos', 0):.0f}% do salário)
+        - Saldo: R$ {analysis.get('saldo', 0):,.0f}
+        - Saúde: {analysis.get('nivel', 'inicial')}
+        
+        Forneça 3-4 recomendações PRÁTICAS e DIRETAS. Seja objetivo e focando em ações imediatas.
+        """
 
     async def get_detailed_analysis(self, user_id: int) -> str:
         """Faz análise detalhada otimizada"""
@@ -331,57 +379,37 @@ class FinanceCoach:
                 logger.warning("❌ Usuário não encontrado para análise detalhada")
                 return "📊 Complete seu cadastro para uma análise personalizada."
             
-            # Análise local rápida primeiro
-            expenses = db.get_monthly_expenses(user_id)
             analysis = self.analyze_financial_health(user_id)
-            
-            total_fixo = analysis.get('total_fixo', 0)
-            total_flexivel = analysis.get('total_flexivel', 0)
-            total_geral = analysis.get('total_geral', 0)
             salario = user_data.get('salario_liquido', 0)
-            saldo = salario - total_geral
-            percentual_gastos = analysis.get('percentual_gastos', 0)
             
-            # Prompt mais conciso
-            prompt = f"""
-            Situação financeira RESUMIDA:
-            - Renda: R$ {salario:,.0f}/mês
-            - Gastos: R$ {total_geral:,.0f}/mês ({percentual_gastos:.0f}% da renda)
-            - Fixos: R$ {total_fixo:,.0f}, Flexíveis: R$ {total_flexivel:,.0f}
-            - Saldo: R$ {saldo:,.0f}
-            - Saúde: {analysis['nivel']}
-            
-            Forneça uma análise CONCISA com: 1) Pontos fortes, 2) Pontos de atenção, 3) 2-3 ações prioritárias.
-            Seja direto e prático.
-            """
-            
-            response = await self._call_deepseek_api(prompt, max_tokens=200)
+            prompt = self._build_detailed_analysis_prompt(analysis, salario)
+            response = await self._call_deepseek_api(prompt, max_tokens=self.max_tokens_long)
             return response or self._get_quick_analysis_fallback()
             
         except Exception as e:
             logger.error(f"Erro otimizado na análise: {e}")
             return self._get_quick_analysis_fallback()
 
-    def _get_quick_fallback_recommendations(self) -> str:
-        """Fallback rápido para recomendações"""
-        logger.info("🔄 Usando fallback rápido para recomendações")
-        recommendations = [
-            "🎯 **RECOMENDAÇÕES PRÁTICAS:**\n\n1. Revise 3 gastos não essenciais esta semana\n2. Automatize poupança (10% do salário)\n3. Estabeleça uma meta financeira clara\n4. Acompanhe gastos diariamente por 7 dias",
-            
-            "💡 **AÇÕES IMEDIATAS:**\n\n• Corte uma assinatura não utilizada\n• Estabeleça limite para gastos flexíveis\n• Crie reserva para emergências\n• Negocie dívidas com juros altos",
-            
-            "🚀 **ESTRATÉGIAS RÁPIDAS:**\n\n1. Regra 50-30-20 para orçamento\n2. Revisão semanal de extratos\n3. Meta de economia mensal realista\n4. Planeamento de compras grandes"
-        ]
-        return random.choice(recommendations)
+    def _build_detailed_analysis_prompt(self, analysis: Dict, salario: float) -> str:
+        """Constrói prompt para análise detalhada"""
+        return f"""
+        Situação financeira RESUMIDA:
+        - Renda: R$ {salario:,.0f}/mês
+        - Gastos: R$ {analysis.get('total_geral', 0):,.0f}/mês ({analysis.get('percentual_gastos', 0):.0f}% da renda)
+        - Fixos: R$ {analysis.get('total_fixo', 0):,.0f}, Flexíveis: R$ {analysis.get('total_flexivel', 0):,.0f}
+        - Saldo: R$ {analysis.get('saldo', 0):,.0f}
+        - Saúde: {analysis.get('nivel', 'inicial')}
+        
+        Forneça uma análise CONCISA com: 1) Pontos fortes, 2) Pontos de atenção, 3) 2-3 ações prioritárias.
+        Seja direto e prático.
+        """
 
     def _get_quick_analysis_fallback(self) -> str:
         """Fallback rápido para análise"""
         logger.info("🔄 Usando fallback rápido para análise")
         analyses = [
             "📊 **ANÁLISE RÁPIDA:**\n\nPontos fortes: Controle de gastos ativo\nAtenção: Otimizar gastos flexíveis\nAções: 1) Revisar assinaturas 2) Estabelecer metas 3) Automatizar poupança",
-            
             "💎 **DIAGNÓSTICO:**\n\nSituação: Em desenvolvimento\nOportunidades: Economia em pequenos gastos\nPrioridades: Reserva de emergência, Educação financeira contínua",
-            
             "🎯 **VISÃO GERAL:**\n\nProgresso: Registro financeiro consistente\nMelhorias: Diversificação de receitas\nFoco: Estabilidade financeira de curto prazo"
         ]
         return random.choice(analyses)
@@ -398,7 +426,6 @@ class FinanceCoach:
             analysis = self.analyze_financial_health(user_id)
             salario = user_data.get('salario_liquido', 0)
             
-            # Prompt mais direto
             prompt = f"""
             Situação: Salário R$ {salario:,.0f}, Saúde {analysis['nivel']}
             Sugira 3 metas financeiras REALISTAS e PRÁTICAS. Seja específico e direto.
@@ -416,7 +443,6 @@ class FinanceCoach:
         logger.info("🔄 Usando fallback rápido para metas")
         goals = [
             "🎯 **METAS SUGERIDAS:**\n\n1. Reserva de emergência (3 meses)\n2. Redução de dívidas em 30%\n3. Investimento mensal de 10% da renda",
-            
             "🌟 **OBJETIVOS REALISTAS:**\n\n• Economizar R$ X em 6 meses\n• Quitar cartão de crédito\n• Criar fundo para estudos\n• Investir em educação financeira"
         ]
         return random.choice(goals)
@@ -440,20 +466,12 @@ class FinanceCoach:
         """Fornece um momento de aprendizado sobre um tópico específico"""
         logger.info(f"🎓 Solicitando momento de aprendizado: {topic}")
         
-        topics = {
-            'orcamento': "Explique de forma simples como fazer um orçamento pessoal em uma frase prática:",
-            'emergencia': "Dê uma dica rápida sobre como criar um fundo de emergência de forma acessível:",
-            'dividas': "Um conselho motivacional para quem está organizando dívidas:",
-            'investimentos': "Explique por que investir é importante de forma simples e inspiradora:",
-            'habitos': "Compartilhe um hábito financeiro simples que traz grandes resultados:"
-        }
-        
-        if topic and topic in topics:
-            prompt = topics[topic]
+        if topic and topic in self.learning_topics:
+            prompt = self.learning_topics[topic]
         else:
-            prompt = random.choice(list(topics.values()))
+            prompt = random.choice(list(self.learning_topics.values()))
             
-        response = await self._call_deepseek_api(prompt, max_tokens=80)
+        response = await self._call_deepseek_api(prompt, max_tokens=self.max_tokens_short)
         return response
 
     async def get_celebration_message(self, user_id: int, achievement: str) -> str:
@@ -541,28 +559,43 @@ class FinanceCoach:
             
         return "\n".join(formatted)
 
+    def _get_quick_fallback_recommendations(self) -> str:
+        """Fallback rápido para recomendações"""
+        logger.info("🔄 Usando fallback rápido para recomendações")
+        recommendations = [
+            "🎯 **RECOMENDAÇÕES PRÁTICAS:**\n\n1. Revise 3 gastos não essenciais esta semana\n2. Automatize poupança (10% do salário)\n3. Estabeleça uma meta financeira clara\n4. Acompanhe gastos diariamente por 7 dias",
+            "💡 **AÇÕES IMEDIATAS:**\n\n• Corte uma assinatura não utilizada\n• Estabeleça limite para gastos flexíveis\n• Crie reserva para emergências\n• Negocie dívidas com juros altos",
+            "🚀 **ESTRATÉGIAS RÁPIDAS:**\n\n1. Regra 50-30-20 para orçamento\n2. Revisão semanal de extratos\n3. Meta de economia mensal realista\n4. Planeamento de compras grandes"
+        ]
+        return random.choice(recommendations)
+
     async def close_session(self):
         """Fecha a sessão HTTP"""
         if self.session and not self.session.closed:
             await self.session.close()
             self.session = None
 
+    def __del__(self):
+        """Destrutor para garantir que a sessão seja fechada"""
+        if self.session and not self.session.closed:
+            asyncio.create_task(self.close_session())
+
 # Instância global do coach
 finance_coach = FinanceCoach()
 
 # Funções de conveniência para uso direto
 async def get_quick_tip():
-    """Função de conveniência para dica rápida"""
     return finance_coach.get_quick_tip()
 
 async def get_personalized_advice(user_id: int, context: str = "geral"):
-    """Função de conveniência para conselho personalizado"""
     return await finance_coach.get_personalized_tip(user_id, context)
 
 async def analyze_financial_situation(user_id: int):
-    """Função de conveniência para análise financeira"""
     return finance_coach.analyze_financial_health(user_id)
 
 async def get_learning_content(user_id: int, topic: str = None):
-    """Função de conveniência para conteúdo educacional"""
     return await finance_coach.get_learning_moment(user_id, topic)
+
+async def get_detailed_analysis(user_id: int):
+    """Função de conveniência para análise detalhada"""
+    return await finance_coach.get_detailed_analysis(user_id)

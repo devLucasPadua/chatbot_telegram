@@ -36,8 +36,8 @@ GOAL_TYPE, GOAL_DESCRIPTION, GOAL_TARGET, GOAL_DEADLINE = range(27, 31)
 SELECT_GOAL, UPDATE_GOAL_PROGRESS, SELECT_GOAL_DELETE, CONFIRM_DELETE_GOAL = range(31, 35)
 GOAL_DEADLINE_CALENDAR = 35
 
-# Gastos do mês (36)
-GASTOS_MES = 36
+# Extrato do mês (36)
+EXTRATO_MES  = 36
 
 # Educação Financeira (37-39)
 DICA_DIA, GLOSSARIO, MODULOS_EDUCATIVOS = range(37, 40)
@@ -87,6 +87,7 @@ def categorias_fixas_keyboard():
     categorias = list(config.CATEGORIAS_FIXAS.keys())
     for i in range(0, len(categorias), 2):
         keyboard.append(categorias[i:i+2])
+    #keyboard.append(['Outros...'])
     keyboard.append(['🏠 Voltar ao Menu'])
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -95,6 +96,7 @@ def categorias_flexiveis_keyboard():
     categorias = list(config.CATEGORIAS_FLEXIVEIS.keys())
     for i in range(0, len(categorias), 2):
         keyboard.append(categorias[i:i+2])
+    #keyboard.append(['Outros...'])
     keyboard.append(['🏠 Voltar ao Menu'])
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -179,8 +181,8 @@ def objetivos_keyboard():
 
 def config_keyboard():
     keyboard = [
-        ['✏️ Editar Perfil'],
-        ['🔄 Redefinir', '🏠 Voltar ao Menu']
+        ['✏️ Editar Perfil', '🔄 Redefinir'],
+        ['🏠 Voltar ao Menu']
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -210,10 +212,32 @@ def analise_detalhada_inline_keyboard():
 # ========== CALENDÁRIO ==========
 class Calendar:
     @staticmethod
-    def create_calendar(year=None, month=None):
+    def create_calendar(year=None, month=None, view='month'):
+        """
+        Cria calendário com diferentes views
+        view: 'month' (padrão), 'year' (seleção de ano), 'decade' (seleção de década)
+        """
         now = datetime.datetime.now()
-        if year is None: year = now.year
-        if month is None: month = now.month
+        if year is None: 
+            year = now.year
+        if month is None: 
+            month = now.month
+
+        if view == 'month':
+            return Calendar.create_month_calendar(year, month)
+        elif view == 'year':
+            return Calendar.create_year_calendar(year)
+        elif view == 'decade':
+            return Calendar.create_decade_calendar(year)
+
+    @staticmethod
+    def create_month_calendar(year=None, month=None):
+        """Cria o calendário mensal padrão"""
+        now = datetime.datetime.now()
+        if year is None: 
+            year = now.year
+        if month is None: 
+            month = now.month
 
         if month < 1:
             month = 12
@@ -225,16 +249,20 @@ class Calendar:
         keyboard = []
         month_name = calendar.month_name[month]
         header = f"{month_name} {year}"
+        
+        # Cabeçalho com navegação - agora o header é clicável para mudar para view de ano
         keyboard.append([
-            InlineKeyboardButton("◀️", callback_data=f"CAL_PREV_{year}_{month}"),
-            InlineKeyboardButton(header, callback_data="CAL_IGNORE"),
-            InlineKeyboardButton("▶️", callback_data=f"CAL_NEXT_{year}_{month}")
+            InlineKeyboardButton("◀️", callback_data=f"CAL_PREV_MONTH_{year}_{month}"),
+            InlineKeyboardButton(header, callback_data=f"CAL_VIEW_YEAR_{year}"),
+            InlineKeyboardButton("▶️", callback_data=f"CAL_NEXT_MONTH_{year}_{month}")
         ])
 
+        # Dias da semana
         week_days = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"]
         keyboard.append([InlineKeyboardButton(d, callback_data="CAL_IGNORE") for d in week_days])
 
-        cal = calendar.Calendar(firstweekday=6)
+        # Dias do mês
+        cal = calendar.Calendar(firstweekday=6)  # Domingo como primeiro dia
         month_days = cal.monthdayscalendar(year, month)
         for week in month_days:
             row = []
@@ -245,10 +273,99 @@ class Calendar:
                     row.append(InlineKeyboardButton(str(day), callback_data=f"CAL_DAY_{year}_{month:02d}_{day:02d}"))
             keyboard.append(row)
 
+        # Botões auxiliares
         keyboard.append([
             InlineKeyboardButton("📅 Hoje", callback_data="CAL_TODAY"),
             InlineKeyboardButton("⌨️ Digitar", callback_data="CAL_MANUAL")
         ])
+        
+        return InlineKeyboardMarkup(keyboard)
+
+    @staticmethod
+    def create_year_calendar(year=None):
+        """Cria calendário de seleção de ano"""
+        now = datetime.datetime.now()
+        if year is None: 
+            year = now.year
+
+        keyboard = []
+        
+        # Cabeçalho com navegação de década - ano é clicável para mudar para view de década
+        keyboard.append([
+            InlineKeyboardButton("◀️", callback_data=f"CAL_PREV_YEAR_{year}"),
+            InlineKeyboardButton(f"{year}", callback_data=f"CAL_VIEW_DECADE_{year}"),
+            InlineKeyboardButton("▶️", callback_data=f"CAL_NEXT_YEAR_{year}")
+        ])
+
+        # Meses em português
+        months_ptbr = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+        
+        # Grid 4x3 para os meses
+        for i in range(0, 12, 4):
+            row = []
+            for j in range(4):
+                month_num = i + j + 1
+                month_name = months_ptbr[i + j]
+                if month_num == now.month and year == now.year:
+                    month_name = f"•{month_name}•"  # Destaca o mês atual
+                row.append(InlineKeyboardButton(month_name, callback_data=f"CAL_SELECT_MONTH_{year}_{month_num:02d}"))
+            keyboard.append(row)
+
+        # Botão voltar
+        keyboard.append([
+            InlineKeyboardButton("↩️ Voltar", callback_data=f"CAL_VIEW_MONTH_{year}_{now.month:02d}")
+        ])
+        
+        return InlineKeyboardMarkup(keyboard)
+
+    @staticmethod
+    def create_decade_calendar(year=None):
+        """Cria calendário de seleção de década"""
+        now = datetime.datetime.now()
+        if year is None: 
+            year = now.year
+
+        # Calcular década atual (ex: 2020-2029)
+        decade_start = (year // 10) * 10
+        decade_end = decade_start + 9
+        
+        keyboard = []
+        
+        # Cabeçalho com navegação de década
+        keyboard.append([
+            InlineKeyboardButton("◀️", callback_data=f"CAL_PREV_DECADE_{decade_start}"),
+            InlineKeyboardButton(f"{decade_start}-{decade_end}", callback_data="CAL_IGNORE"),
+            InlineKeyboardButton("▶️", callback_data=f"CAL_NEXT_DECADE_{decade_start}")
+        ])
+
+        # Anos da década (3x4 grid)
+        years = []
+        for y in range(decade_start - 1, decade_end + 2):  # Inclui anos das décadas adjacentes
+            if y == decade_start - 1:
+                years.append("")  # Espaço vazio
+            elif y == decade_end + 1:
+                years.append("")  # Espaço vazio
+            else:
+                years.append(y)
+        
+        # Organizar em grid 4x3
+        for i in range(0, 12, 4):
+            row = []
+            for j in range(4):
+                year_num = years[i + j]
+                if year_num == "":
+                    row.append(InlineKeyboardButton(" ", callback_data="CAL_IGNORE"))
+                else:
+                    is_current = (year_num == now.year)
+                    display_text = f"•{year_num}•" if is_current else str(year_num)
+                    row.append(InlineKeyboardButton(display_text, callback_data=f"CAL_SELECT_YEAR_{year_num}"))
+            keyboard.append(row)
+
+        # Botão voltar
+        keyboard.append([
+            InlineKeyboardButton("↩️ Voltar", callback_data=f"CAL_VIEW_YEAR_{now.year}")
+        ])
+        
         return InlineKeyboardMarkup(keyboard)
 
     @staticmethod
@@ -258,22 +375,7 @@ class Calendar:
         data = query.data
 
         try:
-            if data == "MY_SHOW_CALENDAR":
-                await query.edit_message_text(
-                    "📅 **SELECIONE O MÊS**\n\nEscolha o mês para ver as estatísticas:",
-                    reply_markup=MonthYearCalendar.create_month_year_calendar()
-                )
-                return h.GASTOS_MES
-                
-            if data == "MY_BACK":
-                await query.edit_message_text("🏠 Voltando ao Menu")
-                await context.bot.send_message(
-                    query.from_user.id,
-                    "🏠 REGISTRAR GASTOS", 
-                    reply_markup=h.gastos_keyboard()
-                )
-                return ConversationHandler.END    
-                
+            # ========== AÇÕES BÁSICAS ==========
             if data == "CAL_TODAY":
                 today = datetime.datetime.now().strftime('%d/%m/%Y')
                 return await Calendar.handle_date_selection(update, context, today)
@@ -291,11 +393,50 @@ class Calendar:
                 selected_date = f"{day:02d}/{month:02d}/{year}"
                 return await Calendar.handle_date_selection(update, context, selected_date)
 
-            if data.startswith("CAL_PREV_") or data.startswith("CAL_NEXT_"):
+            # ========== MUDANÇA DE VIEW ==========
+            if data.startswith("CAL_VIEW_"):
                 parts = data.split('_')
-                year, month = int(parts[2]), int(parts[3])
+                view_type = parts[2]
+                year = int(parts[3])
                 
-                if data.startswith("CAL_PREV_"):
+                if view_type == "YEAR":
+                    await query.edit_message_reply_markup(
+                        reply_markup=Calendar.create_year_calendar(year)
+                    )
+                elif view_type == "DECADE":
+                    await query.edit_message_reply_markup(
+                        reply_markup=Calendar.create_decade_calendar(year)
+                    )
+                elif view_type == "MONTH":
+                    month = int(parts[4]) if len(parts) > 4 else 1
+                    await query.edit_message_reply_markup(
+                        reply_markup=Calendar.create_calendar(year, month, 'month')
+                    )
+                return DATA_GASTO
+
+            # ========== SELEÇÃO DE MÊS/ANO ==========
+            if data.startswith("CAL_SELECT_MONTH_"):
+                parts = data.split('_')
+                year, month = int(parts[3]), int(parts[4])
+                await query.edit_message_reply_markup(
+                    reply_markup=Calendar.create_calendar(year, month, 'month')
+                )
+                return DATA_GASTO
+
+            if data.startswith("CAL_SELECT_YEAR_"):
+                parts = data.split('_')
+                year = int(parts[3])
+                await query.edit_message_reply_markup(
+                    reply_markup=Calendar.create_year_calendar(year)
+                )
+                return DATA_GASTO
+
+            # ========== NAVEGAÇÃO MENSAL ==========
+            if data.startswith("CAL_PREV_MONTH_") or data.startswith("CAL_NEXT_MONTH_"):
+                parts = data.split('_')
+                year, month = int(parts[3]), int(parts[4])
+                
+                if data.startswith("CAL_PREV_MONTH_"):
                     month -= 1
                     if month < 1:
                         month, year = 12, year - 1
@@ -305,24 +446,61 @@ class Calendar:
                         month, year = 1, year + 1
                 
                 try:
-                    await query.edit_message_reply_markup(reply_markup=Calendar.create_calendar(year, month))
+                    await query.edit_message_reply_markup(
+                        reply_markup=Calendar.create_calendar(year, month, 'month')
+                    )
                 except Exception:
                     await context.bot.send_message(
                         chat_id=query.from_user.id,
                         text="📅 Navegação do calendário:",
-                        reply_markup=Calendar.create_calendar(year, month)
+                        reply_markup=Calendar.create_calendar(year, month, 'month')
                     )
+                return DATA_GASTO
+
+            # ========== NAVEGAÇÃO ANUAL ==========
+            if data.startswith("CAL_PREV_YEAR_") or data.startswith("CAL_NEXT_YEAR_"):
+                parts = data.split('_')
+                year = int(parts[3])
+                
+                if data.startswith("CAL_PREV_YEAR_"):
+                    year -= 1
+                else:
+                    year += 1
+                
+                await query.edit_message_reply_markup(
+                    reply_markup=Calendar.create_year_calendar(year)
+                )
+                return DATA_GASTO
+
+            # ========== NAVEGAÇÃO DE DÉCADA ==========
+            if data.startswith("CAL_PREV_DECADE_") or data.startswith("CAL_NEXT_DECADE_"):
+                parts = data.split('_')
+                decade_start = int(parts[3])
+                
+                if data.startswith("CAL_PREV_DECADE_"):
+                    decade_start -= 10
+                else:
+                    decade_start += 10
+                
+                await query.edit_message_reply_markup(
+                    reply_markup=Calendar.create_decade_calendar(decade_start)
+                )
+                return DATA_GASTO
+
+            # ========== IGNORAR ==========
+            if data == "CAL_IGNORE":
                 return DATA_GASTO
 
             return DATA_GASTO
 
         except Exception as e:
-            logger.error(f"Erro no calendário mensal: {e}")
-            await query.message.reply_text("❌ Erro ao processar seleção.", reply_markup=h.gastos_keyboard())
+            logger.error(f"Erro no calendário: {e}")
+            await query.message.reply_text("❌ Erro ao processar seleção.", reply_markup=gastos_keyboard())
             return ConversationHandler.END
 
     @staticmethod
     async def handle_date_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, date_str: str):
+        """Processa a seleção final da data"""
         query = update.callback_query
         user_id = context.user_data.get('user_id', query.from_user.id)
         
@@ -382,9 +560,13 @@ class MonthYearCalendar:
                 row.append(InlineKeyboardButton(month_name, callback_data=f"MY_MONTH_{year}_{month_num:02d}"))
             keyboard.append(row)
         
+        # BOTÕES CORRETOS - INCLUINDO "DIGITAR"
         keyboard.append([
-            InlineKeyboardButton("🏠 Voltar", callback_data="MY_BACK"),
-            InlineKeyboardButton("📅 Este Mês", callback_data=f"MY_MONTH_{now.year}_{now.month:02d}")
+            InlineKeyboardButton("📅 Este Mês", callback_data=f"MY_MONTH_{now.year}_{now.month:02d}"),
+            InlineKeyboardButton("⌨️ Digitar", callback_data="MY_MANUAL")
+        ])
+        keyboard.append([
+            InlineKeyboardButton("🏠 Voltar ao Menu", callback_data="MY_BACK")
         ])
         return InlineKeyboardMarkup(keyboard)
 
@@ -395,113 +577,288 @@ class MonthYearCalendar:
         data = query.data
         
         try:
-            # BOTÃO "VER OUTRO MÊS" - VOLTAR AO CALENDÁRIO
-            if data == "MY_SHOW_CALENDAR":
+            # CALLBACKS PARA EXTRATO
+            if data == "EXTRATO_SHOW_CALENDAR":
                 await query.edit_message_text(
-                    "📅 **SELECIONE O MÊS**\n\nEscolha o mês para ver as estatísticas:",
+                    "📅 **SELECIONE O MÊS**\n\nEscolha o mês para ver o extrato detalhado:",
                     reply_markup=MonthYearCalendar.create_month_year_calendar()
                 )
-                return GASTOS_MES
-            
-            # BOTÃO "VOLTAR AO MENU" DAS ESTATÍSTICAS
-            elif data == "MY_BACK":
-                await query.edit_message_text("🏠 Voltando ao Menu")
+                return EXTRATO_MES
+                    
+            elif data == "EXTRATO_BACK":
+                try:
+                    await query.edit_message_text("🏠 Voltando ao Menu", reply_markup=None)
+                except Exception as e:
+                    logger.error(f"Erro ao editar mensagem: {e}")
+                
                 await context.bot.send_message(
                     query.from_user.id,
-                    "🏠 REGISTRAR GASTOS", 
-                    reply_markup=gastos_keyboard()
+                    "🏠 MENU PRINCIPAL", 
+                    reply_markup=main_keyboard()
                 )
                 return ConversationHandler.END
+            
+            # BOTÃO "VOLTAR AO MENU" DO CALENDÁRIO
+            elif data == "MY_BACK":
+                try:
+                    await query.edit_message_text("🏠 Voltando ao Menu", reply_markup=None)
+                except Exception as e:
+                    logger.error(f"Erro ao editar mensagem: {e}")
+                
+                await context.bot.send_message(
+                    query.from_user.id,
+                    "🏠 MENU PRINCIPAL", 
+                    reply_markup=main_keyboard()
+                )
+                return ConversationHandler.END
+
+            # BOTÃO "DIGITAR" - CORRIGIDO
+            elif data == "MY_MANUAL":
+                try:
+                    await query.edit_message_text(
+                        "⌨️ **DIGITE O MÊS E ANO**\n\n"
+                        "📋 **Formatos aceitos:**\n"
+                        "• **MM/AAAA** (ex: 03/2024)\n"
+                        "• **MMAAAA** (ex: 032024)\n\n"
+                        "💡 **Exemplos:**\n"
+                        "• Março de 2024 → 03/2024 ou 032024\n"
+                        "• Dezembro de 2023 → 12/2023 ou 122023\n\n"
+                        "Digite o mês e ano no formato desejado:",
+                        reply_markup=None
+                    )
+                except Exception as e:
+                    logger.error(f"Erro ao editar mensagem para entrada manual: {e}")
+                    # Fallback: enviar nova mensagem
+                    await context.bot.send_message(
+                        query.from_user.id,
+                        "⌨️ **DIGITE O MÊS E ANO**\n\n"
+                        "📋 **Formatos aceitos:**\n"
+                        "• **MM/AAAA** (ex: 03/2024)\n"
+                        "• **MMAAAA** (ex: 032024)\n\n"
+                        "💡 **Exemplos:**\n"
+                        "• Março de 2024 → 03/2024 ou 032024\n"
+                        "• Dezembro de 2023 → 12/2023 ou 122023\n\n"
+                        "Digite o mês e ano no formato desejado:",
+                        reply_markup=ReplyKeyboardRemove()
+                    )
+                
+                return EXTRATO_MES
             
             # NAVEGAÇÃO ANO ANTERIOR
             elif data.startswith("MY_PREV_"):
                 year = int(data.split('_')[2]) - 1
                 await query.edit_message_reply_markup(reply_markup=MonthYearCalendar.create_month_year_calendar(year))
-                return GASTOS_MES
+                return EXTRATO_MES
             
             # NAVEGAÇÃO PRÓXIMO ANO
             elif data.startswith("MY_NEXT_"):
                 year = int(data.split('_')[2]) + 1
                 await query.edit_message_reply_markup(reply_markup=MonthYearCalendar.create_month_year_calendar(year))
-                return GASTOS_MES
+                return EXTRATO_MES
             
-            # SELEÇÃO DE MÊS ESPECÍFICO
+            # SELEÇÃO DE MÊS PARA EXTRATO
             elif data.startswith("MY_MONTH_"):
                 parts = data.split('_')
                 year, month = int(parts[2]), int(parts[3])
-                await MonthYearCalendar.show_month_stats(query, context, year, month)
-                return GASTOS_MES
+                
+                try:
+                    await query.edit_message_text("📊 Gerando extrato...")
+                except Exception as e:
+                    logger.error(f"Erro ao editar mensagem: {e}")
+                
+                await MonthYearCalendar.show_month_extrato(query, context, year, month)
+                return EXTRATO_MES
                 
         except Exception as e:
-            logger.error(f"Erro no calendário mensal: {e}")
-            await query.message.reply_text("❌ Erro ao processar seleção.", reply_markup=gastos_keyboard())
+            logger.error(f"Erro no calendário do extrato: {e}")
+            await query.message.reply_text("❌ Erro ao processar seleção.", reply_markup=main_keyboard())
             return ConversationHandler.END
-
-    @staticmethod
-    async def show_month_stats(query, context, year: int, month: int):
-        user_id = query.from_user.id
+            
+    @staticmethod        
+    async def show_month_extrato(update_or_query, context, year: int, month: int):
+        """Mostra o extrato detalhado do mês selecionado"""
         try:
-            expenses = db.get_monthly_expenses(user_id, month, year)
+            # Determinar o tipo de entrada de forma mais robusta
+            user_id = None
+            message_obj = None
+            is_callback = False
+            
+            # Caso 1: É uma CallbackQuery (seleção no calendário)
+            if hasattr(update_or_query, 'callback_query') and update_or_query.callback_query:
+                query = update_or_query.callback_query
+                user_id = query.from_user.id
+                message_obj = query.message
+                is_callback = True
+                
+            # Caso 2: É um Update com message (entrada manual)
+            elif hasattr(update_or_query, 'message') and update_or_query.message:
+                user_id = update_or_query.message.from_user.id
+                message_obj = update_or_query.message
+                is_callback = False
+                
+            # Caso 3: É uma CallbackQuery direta
+            elif hasattr(update_or_query, 'from_user'):
+                user_id = update_or_query.from_user.id
+                message_obj = update_or_query.message if hasattr(update_or_query, 'message') else None
+                is_callback = True
+                
+            else:
+                # Fallback: tentar obter user_id do contexto
+                if context and context.user_data:
+                    user_id = context.user_data.get('user_id')
+                if not user_id:
+                    raise ValueError("Não foi possível determinar o usuário")
+
+            # Buscar todas as transações do mês
+            transactions = db.get_monthly_transactions(user_id, month, year)
             user_data = db.get_user_data(user_id)
-            
-            total_fixo = sum(sum(v.values()) for v in expenses['fixo'].values()) if expenses['fixo'] else 0
-            total_flexivel = sum(sum(v.values()) for v in expenses['flexivel'].values()) if expenses['flexivel'] else 0
-            total_geral = total_fixo + total_flexivel
-            
-            salario = user_data['salario_liquido'] if user_data else 0
-            saldo = salario - total_geral
-            percentual_gastos = (total_geral / salario * 100) if salario > 0 else 0
+            nickname = user_data['nickname'] if user_data else 'Usuário'
             
             meses_ptbr = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
                          "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
             month_name = meses_ptbr[month-1]
             
-            message = f"📊 **{month_name}/{year}**\n\n"
+            response = f"📊 **EXTRATO DETALHADO - {month_name}/{year}**\n\n"
+            response += f"👤 **Usuário:** {nickname}\n\n"
             
-            if total_geral > 0:
-                message += f"💰 **RESUMO GERAL**\n"
-                message += f"• 🏠 Fixos: R$ {total_fixo:,.2f}\n"
-                message += f"• 🛍️ Flexíveis: R$ {total_flexivel:,.2f}\n"
-                message += f"• 💰 Total: R$ {total_geral:,.2f}\n"
-                
-                if salario > 0:
-                    message += f"• 💵 Salário: R$ {salario:,.2f}\n"
-                    message += f"• ⚖️ Saldo: R$ {saldo:,.2f}\n"
-                    message += f"• 📈 Comprometido: {percentual_gastos:.1f}%\n\n"
-                
-                proporcao_fixo = (total_fixo/total_geral)*100
-                proporcao_flex = (total_flexivel/total_geral)*100
-                bar_len = 10
-                bar_fixo = '🟦' * int(proporcao_fixo/100*bar_len)
-                bar_flex = '🟩' * int(proporcao_flex/100*bar_len)
-                message += f"📊 **DISTRIBUIÇÃO**\n"
-                message += f"🏠 Fixos: {bar_fixo} {proporcao_fixo:.1f}%\n"
-                message += f"🛍️ Flexíveis: {bar_flex} {proporcao_flex:.1f}%\n"
+            if not transactions:
+                response += "📝 Nenhuma transação registrada neste mês."
             else:
-                message += f"📝 Nenhum gasto registrado em {month_name}/{year}."
-            
-            # BOTÕES CORRETOS - "Ver Outro Mês" deve chamar MY_SHOW_CALENDAR
+                # Agrupar por tipo e categoria
+                transacoes_por_tipo = {'fixo': {}, 'flexivel': {}}
+                total_fixo = 0
+                total_flexivel = 0
+                
+                for transacao in transactions:
+                    tipo = transacao['tipo']
+                    categoria = transacao['categoria']
+                    valor = transacao['valor']
+                    
+                    if categoria not in transacoes_por_tipo[tipo]:
+                        transacoes_por_tipo[tipo][categoria] = []
+                    
+                    transacoes_por_tipo[tipo][categoria].append(transacao)
+                    
+                    if tipo == 'fixo':
+                        total_fixo += valor
+                    else:
+                        total_flexivel += valor
+                
+                total_geral = total_fixo + total_flexivel
+                
+                # Gastos Fixos
+                if transacoes_por_tipo['fixo']:
+                    response += "🏠 **GASTOS FIXOS**\n"
+                    for categoria, transacoes in transacoes_por_tipo['fixo'].items():
+                        total_categoria = sum(t['valor'] for t in transacoes)
+                        response += f"• {categoria}: R$ {total_categoria:,.2f}\n"
+                    
+                    response += f"📌 **Total Fixo:** R$ {total_fixo:,.2f}\n\n"
+                
+                # Gastos Flexíveis
+                if transacoes_por_tipo['flexivel']:
+                    response += "🛍️ **GASTOS FLEXÍVEIS**\n"
+                    for categoria, transacoes in transacoes_por_tipo['flexivel'].items():
+                        total_categoria = sum(t['valor'] for t in transacoes)
+                        response += f"• {categoria}: R$ {total_categoria:,.2f}\n"
+                    
+                    response += f"📌 **Total Flexível:** R$ {total_flexivel:,.2f}\n\n"
+                
+                # Resumo Geral
+                response += f"🎯 **RESUMO DO MÊS**\n"
+                response += f"💰 **Total Gasto:** R$ {total_geral:,.2f}\n"
+                
+                if user_data and user_data.get('salario_liquido') and user_data['salario_liquido'] > 0:
+                    salario = user_data['salario_liquido']
+                    saldo = salario - total_geral
+                    percentual = (total_geral / salario * 100) if salario > 0 else 0
+                    
+                    response += f"💵 **Salário:** R$ {salario:,.2f}\n"
+                    response += f"⚖️ **Saldo:** R$ {saldo:,.2f}\n"
+                    response += f"📈 **Comprometido:** {percentual:.1f}%\n"
+                    
+                    # Análise de saúde
+                    if percentual <= 60:
+                        response += "✅ **Situação:** Saudável\n"
+                    elif percentual <= 85:
+                        response += "⚠️ **Situação:** Atenção\n"
+                    else:
+                        response += "🚨 **Situação:** Crítico\n"
+                
+                response += f"\n📋 **Total de transações:** {len(transactions)}"
+
+            # Botões de navegação
             keyboard = [
-                [InlineKeyboardButton("📅 Ver Outro Mês", callback_data="MY_SHOW_CALENDAR")],
-                [InlineKeyboardButton("🏠 Voltar ao Menu", callback_data="MY_BACK")]
+                [InlineKeyboardButton("📅 Ver Outro Mês", callback_data="EXTRATO_SHOW_CALENDAR")],
+                [InlineKeyboardButton("🏠 Voltar ao Menu", callback_data="EXTRATO_BACK")]
             ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
             
-            await query.edit_message_text(
-                text=message, 
-                reply_markup=InlineKeyboardMarkup(keyboard), 
-                parse_mode='Markdown'
-            )
-            
+            # Enviar resposta baseada no tipo de entrada
+            if is_callback:
+                # Para callbacks, editar a mensagem existente
+                try:
+                    if len(response) <= 4000:
+                        await update_or_query.edit_message_text(
+                            text=response, 
+                            reply_markup=reply_markup, 
+                            parse_mode='Markdown'
+                        )
+                    else:
+                        # Dividir mensagem longa
+                        parte1 = response[:4000]
+                        parte2 = response[4000:]
+                        await update_or_query.edit_message_text(parte1, reply_markup=reply_markup, parse_mode='Markdown')
+                        await context.bot.send_message(user_id, parte2, parse_mode='Markdown')
+                except Exception as e:
+                    logger.error(f"Erro ao editar mensagem: {e}")
+                    # Fallback: enviar nova mensagem
+                    await context.bot.send_message(user_id, response, reply_markup=reply_markup, parse_mode='Markdown')
+            else:
+                # Para mensagens normais, enviar nova mensagem
+                if len(response) <= 4000:
+                    await message_obj.reply_text(response, reply_markup=reply_markup, parse_mode='Markdown')
+                else:
+                    parte1 = response[:4000]
+                    parte2 = response[4000:]
+                    await message_obj.reply_text(parte1, reply_markup=reply_markup, parse_mode='Markdown')
+                    await context.bot.send_message(user_id, parte2, parse_mode='Markdown')
+                        
         except Exception as e:
-            logger.error(f"Erro ao gerar estatísticas: {e}")
+            logger.error(f"Erro ao gerar extrato mensal: {e}")
+            
+            error_message = "❌ Erro ao carregar extrato."
+            
+            # Determinar user_id para mensagem de erro de forma segura
+            try:
+                user_id = None
+                if hasattr(update_or_query, 'callback_query') and update_or_query.callback_query:
+                    user_id = update_or_query.callback_query.from_user.id
+                elif hasattr(update_or_query, 'message') and update_or_query.message:
+                    user_id = update_or_query.message.from_user.id
+                elif hasattr(update_or_query, 'from_user'):
+                    user_id = update_or_query.from_user.id
+                elif context and context.user_data:
+                    user_id = context.user_data.get('user_id')
+                    
+                if not user_id:
+                    logger.error("Não foi possível obter user_id para enviar mensagem de erro")
+                    return
+                    
+            except Exception as user_error:
+                logger.error(f"Erro ao obter user_id: {user_error}")
+                return
+
             keyboard = [
-                [InlineKeyboardButton("📅 Tentar Novamente", callback_data="MY_SHOW_CALENDAR")],
-                [InlineKeyboardButton("🏠 Voltar ao Menu", callback_data="MY_BACK")]
+                [InlineKeyboardButton("📅 Tentar Novamente", callback_data="EXTRATO_SHOW_CALENDAR")],
+                [InlineKeyboardButton("🏠 Voltar ao Menu", callback_data="EXTRATO_BACK")]
             ]
-            await query.edit_message_text(
-                "❌ Erro ao carregar estatísticas.", 
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            try:
+                await context.bot.send_message(user_id, error_message, reply_markup=reply_markup)
+            except Exception as send_error:
+                logger.error(f"Erro ao enviar mensagem de erro: {send_error}")
 
 # ========== HANDLERS PRINCIPAIS ==========
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -549,7 +906,6 @@ async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return GET_SALARY
 
-# Modifique o handler get_salary no handlers.py
 async def get_salary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         salary_text = update.message.text.replace(',', '.').strip()
@@ -593,7 +949,110 @@ async def get_salary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Valor inválido! Digite um número, ex.: 1500,00")
         return GET_SALARY
 
-# ========== NOVOS HANDLERS PARA SALÁRIO E RENDA EXTRA ==========
+async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler para o comando /menu"""
+    await update.message.reply_text(
+        "🏠 **MENU PRINCIPAL**\n\n"
+        "O que você gostaria de fazer?",
+        reply_markup=main_keyboard()
+    )
+    return ConversationHandler.END
+    
+async def ajuda_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler para o comando /ajuda com mensagem formatada corretamente"""
+    try:
+        # Mensagem de ajuda com Markdown corrigido
+        help_text = """
+🤖 *COMANDOS DISPONÍVEIS*
+
+*📊 Gestão Financeira*
+/start - Iniciar o bot
+/menu - Menu principal
+/ajuda - Esta mensagem de ajuda
+/salario - Definir seu salário
+/gastos - Adicionar gastos
+/resumo - Ver resumo financeiro
+/analise - Análise da saúde financeira
+/metas - Gerenciar metas financeiras 
+
+*💡 Educação Financeira*
+/dicas - Dicas personalizadas
+/aprender - Conteúdo educacional
+/ia_analise - Análise detalhada com IA
+/recomendacoes - Recomendações personalizadas
+
+*⚙️ Configurações*
+/config - Configurações do usuário
+/limpar - Limpar dados
+/sobre - Sobre o bot
+
+*💬 Suporte*
+/feedback - Enviar feedback
+/duvidas - Tirar dúvidas
+
+*Dicas de uso:*
+• Use /salario para definir sua renda mensal
+• Adicione gastos com /gastos
+• Consulte /resumo para ver seu panorama
+• Use /analise para ver sua saúde financeira
+• Explore /aprender para conteúdo educativo
+
+*Suporte:* Contate o desenvolvedor em caso de problemas.
+        """.strip()
+
+        await update.message.reply_text(
+            help_text,
+            parse_mode='MarkdownV2',
+            reply_markup=ReplyKeyboardRemove()
+        )
+        
+    except Exception as e:
+        logger.error(f"Erro no handler de ajuda: {e}")
+        # Fallback sem formatação Markdown
+        fallback_text = """
+🤖 COMANDOS DISPONÍVEIS
+
+📊 Gestão Financeira
+/start - Iniciar o bot
+/menu - Menu principal
+/ajuda - Esta mensagem de ajuda
+/salario - Definir seu salário
+/gastos - Adicionar gastos
+/resumo - Ver resumo financeiro
+/analise - Análise da saúde financeira
+/metas - Gerenciar metas financeiras
+
+💡 Educação Financeira
+/dicas - Dicas personalizadas
+/aprender - Conteúdo educacional
+/ia_analise - Análise detalhada com IA
+/recomendacoes - Recomendações personalizadas
+
+⚙️ Configurações
+/config - Configurações do usuário
+/limpar - Limpar dados
+/sobre - Sobre o bot
+
+💬 Suporte
+/feedback - Enviar feedback
+/duvidas - Tirar dúvidas
+
+Dicas de uso:
+• Use /salario para definir sua renda mensal
+• Adicione gastos com /gastos
+• Consulte /resumo para ver seu panorama
+• Use /analise para ver sua saúde financeira
+• Explore /aprender para conteúdo educativo
+
+Suporte: Contate o desenvolvedor em caso de problemas.
+        """.strip()
+        
+        await update.message.reply_text(
+            fallback_text,
+            reply_markup=ReplyKeyboardRemove()
+        )
+    
+# ========== HANDLERS PARA SALÁRIO ==========
 
 async def salario_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler para gerenciar salários"""
@@ -682,7 +1141,7 @@ async def add_salary_value_handler(update: Update, context: ContextTypes.DEFAULT
         return ADD_SALARY_VALUE
 
 async def consultar_salarios_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler para consultar todos os salários - VERSÃO CORRIGIDA"""
+    """Handler para consultar todos os salários"""
     user_id = update.effective_user.id
     
     # Verificar se o usuário existe
@@ -758,51 +1217,499 @@ async def alterar_salarios_handler(update: Update, context: ContextTypes.DEFAULT
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
     return EDIT_SALARY_SELECT
-    
-async def definir_salario_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler para definir salário (similar ao fluxo inicial)"""
-    user_id = update.effective_user.id
-    user_data = db.get_user_data(user_id)
-    
-    if not user_data:
-        await update.message.reply_text("❌ Use /start para se cadastrar primeiro.")
-        return ConversationHandler.END
-        
-    await update.message.reply_text(
-        "💵 DEFINIR SALÁRIO\n\n"
-        "Digite o valor do seu salário líquido mensal:\n"
-        "(ex: 2500,00 ou 3500.50)",
-        reply_markup=ReplyKeyboardRemove()
-    )
-    return GET_SALARY
 
-async def ver_salario_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler para ver salário atual"""
-    user_id = update.effective_user.id
-    user_data = db.get_user_data(user_id)
+async def edit_salary_select_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Processa a seleção do salário para edição"""
+    query = update.callback_query
+    await query.answer()
     
-    if not user_data:
-        await update.message.reply_text("❌ Use /start para se cadastrar primeiro.")
+    data = query.data
+    
+    if data == "cancel_edit_salary":
+        await query.edit_message_text("❌ Operação cancelada.")
+        await context.bot.send_message(
+            query.from_user.id,
+            "💰 GERENCIAR SALÁRIOS",
+            reply_markup=gastos_keyboard()
+        )
         return ConversationHandler.END
-        
-    salario = user_data.get('salario_liquido', 0)
     
-    if salario and salario > 0:
+    if data.startswith("edit_salary_"):
+        salary_id = int(data.split('_')[2])
+        context.user_data['selected_salary_id'] = salary_id
+        
+        # Buscar informações do salário
+        user_id = query.from_user.id
+        salaries = db.get_salaries(user_id)
+        selected_salary = None
+        
+        for salary in salaries:
+            if salary['id'] == salary_id:
+                selected_salary = salary
+                break
+        
+        if selected_salary:
+            # Criar opções baseadas no tipo de salário
+            keyboard = []
+            
+            if selected_salary['principal']:
+                keyboard.append([InlineKeyboardButton("✏️ Renomear Origem", callback_data="edit_origin")])
+                keyboard.append([InlineKeyboardButton("💰 Alterar Valor", callback_data="edit_value")])
+            else:
+                keyboard.append([InlineKeyboardButton("✏️ Renomear Origem", callback_data="edit_origin")])
+                keyboard.append([InlineKeyboardButton("💰 Alterar Valor", callback_data="edit_value")])
+                keyboard.append([InlineKeyboardButton("🎯 Tornar Principal", callback_data="make_principal")])
+                keyboard.append([InlineKeyboardButton("🗑️ Excluir Salário", callback_data="delete_salary")])
+            
+            keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data="cancel_action")])
+            
+            principal_text = " (PRINCIPAL)" if selected_salary['principal'] else ""
+            
+            await query.edit_message_text(
+                f"✏️ EDITAR SALÁRIO\n\n"
+                f"📝 Origem: {selected_salary['origem']}{principal_text}\n"
+                f"💰 Valor: R$ {selected_salary['valor']:,.2f}\n\n"
+                f"Escolha uma ação:",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            return EDIT_SALARY_ACTION
+    
+    await query.edit_message_text("❌ Erro ao selecionar salário.")
+    return ConversationHandler.END
+
+async def edit_salary_action_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Processa a ação selecionada para o salário"""
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    salary_id = context.user_data.get('selected_salary_id')
+    
+    if data == "cancel_action":
+        await query.edit_message_text("❌ Operação cancelada.")
+        await context.bot.send_message(
+            query.from_user.id,
+            "💰 GERENCIAR SALÁRIOS",
+            reply_markup=gastos_keyboard()
+        )
+        return ConversationHandler.END
+    
+    if data == "edit_origin":
+        await query.edit_message_text(
+            "✏️ RENOMEAR ORIGEM\n\n"
+            "Digite o novo nome para a origem deste salário:"
+        )
+        return EDIT_SALARY_ORIGIN
+    
+    elif data == "edit_value":
+        await query.edit_message_text(
+            "💰 ALTERAR VALOR\n\n"
+            "Digite o novo valor para este salário:\n"
+            "(Ex: 3000,00)"
+        )
+        return EDIT_SALARY_VALUE
+    
+    elif data == "make_principal":
+        user_id = query.from_user.id
+        success = db.set_principal_salary(salary_id, user_id)  # ← corrigido (antes podia usar tornar_principal)
+        
+        if success:
+            await query.edit_message_text(
+                "✅ SALÁRIO DEFINIDO COMO PRINCIPAL!\n\n"
+                "Este salário agora é seu salário principal.",
+                reply_markup=gastos_keyboard()
+            )
+        else:
+            await query.edit_message_text(
+                "❌ Erro ao definir salário principal.",
+                reply_markup=gastos_keyboard()
+            )
+        return ConversationHandler.END
+    
+    elif data == "delete_salary":
+        success = db.delete_salary(salary_id)  # ← corrigido (antes podia usar excluir_salario)
+        
+        if success:
+            await query.edit_message_text(
+                "✅ SALÁRIO EXCLUÍDO!\n\n"
+                "O salário foi removido com sucesso.",
+                reply_markup=gastos_keyboard()
+            )
+        else:
+            await query.edit_message_text(
+                "❌ Não é possível excluir o salário principal.\n"
+                "Apenas salários extras podem ser excluídos.",
+                reply_markup=gastos_keyboard()
+            )
+        return ConversationHandler.END
+    
+    return ConversationHandler.END
+
+async def edit_salary_origin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Processa a edição da origem do salário"""
+    new_origin = update.message.text.strip()
+    salary_id = context.user_data.get('selected_salary_id')
+    
+    if not new_origin:
+        await update.message.reply_text("❌ Origem inválida. Digite novamente:")
+        return EDIT_SALARY_ORIGIN
+    
+    success = db.update_salary(salary_id, origem=new_origin)
+    
+    if success:
         await update.message.reply_text(
-            f"💰 SEU SALÁRIO ATUAL\n\n"
-            f"💵 Valor: R$ {salario:,.2f}\n\n"
-            f"Use '✏️ Alterar Salário' para modificar este valor.",
+            f"✅ ORIGEM ALTERADA!\n\n"
+            f"Novo nome: {new_origin}",
             reply_markup=gastos_keyboard()
         )
     else:
         await update.message.reply_text(
-            "💰 SALÁRIO NÃO DEFINIDO\n\n"
-            "Você ainda não definiu seu salário.\n"
-            "Use '💵 Definir Salário' para configurar.",
+            "❌ Erro ao alterar origem.",
             reply_markup=gastos_keyboard()
         )
     
-    return ConversationHandler.END    
+    # Limpar dados temporários
+    context.user_data.clear()
+    return ConversationHandler.END
+
+async def edit_salary_value_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Processa a edição do valor do salário"""
+    try:
+        valor_text = update.message.text.replace(',', '.').strip()
+        new_value = float(valor_text)
+        salary_id = context.user_data.get('selected_salary_id')
+        
+        if new_value <= 0:
+            await update.message.reply_text("❌ O valor deve ser maior que zero. Digite novamente:")
+            return EDIT_SALARY_VALUE
+        
+        success = db.update_salary(salary_id, valor=new_value)
+        
+        if success:
+            await update.message.reply_text(
+                f"✅ VALOR ALTERADO!\n\n"
+                f"Novo valor: R$ {new_value:,.2f}",
+                reply_markup=gastos_keyboard()
+            )
+        else:
+            await update.message.reply_text(
+                "❌ Erro ao alterar valor.",
+                reply_markup=gastos_keyboard()
+            )
+        
+        # Limpar dados temporários
+        context.user_data.clear()
+        return ConversationHandler.END
+        
+    except ValueError:
+        await update.message.reply_text("❌ Valor inválido! Digite um número (ex: 3000,00)")
+        return EDIT_SALARY_VALUE
+
+# ========== HANDLERS PARA RENDAS EXTRAS ==========
+
+async def renda_extra_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler para gerenciar rendas extras"""
+    await update.message.reply_text(
+        "💵 GERENCIAR RENDAS EXTRAS\n\n"
+        "Escolha uma opção:",
+        reply_markup=ReplyKeyboardMarkup([
+            ['💵 Adicionar Renda Extra', '✏️ Alterar Rendas Extras'],
+            ['📊 Consultar Rendas Extras', '🏠 Voltar ao Menu']
+        ], resize_keyboard=True)
+    )
+    return ConversationHandler.END
+
+async def add_extra_income_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Inicia o processo de adicionar renda extra"""
+    await update.message.reply_text(
+        "💵 ADICIONAR RENDA EXTRA\n\n"
+        "📝 Qual a fonte/origem desta renda extra?\n"
+        "(Ex: Freelance, Bico, Investimentos, etc.)",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ADD_EXTRA_INCOME_ORIGIN
+
+async def add_extra_income_origin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    origem = update.message.text.strip()
+    if not origem:
+        await update.message.reply_text("❌ Por favor, digite uma origem válida.")
+        return ADD_EXTRA_INCOME_ORIGIN
+    
+    context.user_data['extra_income_origin'] = origem
+    await update.message.reply_text(
+        f"💰 Qual o valor da renda extra de {origem}?\n"
+        f"(Ex: 500,00)",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ADD_EXTRA_INCOME_VALUE
+
+async def add_extra_income_value_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        valor_text = update.message.text.replace(',', '.').strip()
+        valor = float(valor_text)
+        
+        if valor <= 0:
+            await update.message.reply_text("❌ O valor deve ser maior que zero.")
+            return ADD_EXTRA_INCOME_VALUE
+        
+        user_id = update.effective_user.id
+        origem = context.user_data['extra_income_origin']
+        
+        success = db.add_extra_income(user_id, origem, valor)
+        
+        if success:
+            message = (
+                f"✅ RENDA EXTRA ADICIONADA!\n\n"
+                f"📋 Detalhes:\n"
+                f"• 📝 Fonte/Origem: {origem}\n"
+                f"• 💰 Valor: R$ {valor:,.2f}\n"
+            )
+            
+            await update.message.reply_text(message, reply_markup=gastos_keyboard())
+        else:
+            await update.message.reply_text("❌ Erro ao adicionar renda extra.", reply_markup=gastos_keyboard())
+        
+        # Limpar dados temporários
+        context.user_data.clear()
+        return ConversationHandler.END
+        
+    except ValueError:
+        await update.message.reply_text("❌ Valor inválido! Digite um número (ex: 500,00)")
+        return ADD_EXTRA_INCOME_VALUE
+
+async def consultar_rendas_extras_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler para consultar todas as rendas extras"""
+    user_id = update.effective_user.id
+    
+    # Verificar se o usuário existe
+    if not db.user_exists(user_id):
+        await update.message.reply_text("❌ Use /start para se cadastrar primeiro.")
+        return ConversationHandler.END
+    
+    incomes = db.get_extra_incomes(user_id)
+    
+    if not incomes:
+        await update.message.reply_text(
+            "💵 NENHUMA RENDA EXTRA CADASTRADA\n\n"
+            "Você ainda não cadastrou nenhuma renda extra.\n"
+            "Use '💵 Adicionar Renda Extra' para cadastrar sua primeira renda extra.",
+            reply_markup=gastos_keyboard()
+        )
+        return ConversationHandler.END
+    
+    total = sum(income['valor'] for income in incomes)
+    
+    response = "💵 EXTRATO DE RENDAS EXTRAS\n\n"
+    
+    for i, income in enumerate(incomes, 1):
+        response += f"{i}. 📝 {income['origem']}\n"
+        response += f"   💰 R$ {income['valor']:,.2f}\n"
+        
+        # Formatar data de criação
+        try:
+            data_obj = datetime.datetime.strptime(income['data_criacao'], '%Y-%m-%d %H:%M:%S')
+            data_formatada = data_obj.strftime('%d/%m/%Y')
+            response += f"   📅 Cadastrado em: {data_formatada}\n"
+        except:
+            response += f"   📅 Cadastrado em: {income['data_criacao']}\n"
+        
+        response += "\n"
+    
+    response += f"💵 TOTAL DE RENDAS EXTRAS: R$ {total:,.2f}\n\n"
+    response += "💡 Use '✏️ Alterar Rendas Extras' para editar ou excluir."
+    
+    await update.message.reply_text(response, reply_markup=gastos_keyboard())
+    return ConversationHandler.END
+
+async def alterar_rendas_extras_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler para alterar rendas extras"""
+    user_id = update.effective_user.id
+    incomes = db.get_extra_incomes(user_id)
+    
+    if not incomes:
+        await update.message.reply_text(
+            "💵 NENHUMA RENDA EXTRA CADASTRADA\n\n"
+            "Você ainda não cadastrou nenhuma renda extra.\n"
+            "Use '💵 Adicionar Renda Extra' para cadastrar.",
+            reply_markup=gastos_keyboard()
+        )
+        return ConversationHandler.END
+    
+    # Criar keyboard com as rendas extras
+    keyboard = []
+    for income in incomes:
+        button_text = f"{income['origem']} - R$ {income['valor']:,.2f}"
+        keyboard.append([InlineKeyboardButton(button_text, callback_data=f"edit_extra_income_{income['id']}")])
+    
+    keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data="cancel_edit_extra_income")])
+    
+    await update.message.reply_text(
+        "✏️ ALTERAR RENDAS EXTRAS\n\n"
+        "Selecione a renda extra que deseja alterar:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    return EDIT_EXTRA_INCOME_SELECT
+
+async def edit_extra_income_select_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Processa a seleção da renda extra para edição"""
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    
+    if data == "cancel_edit_extra_income":
+        await query.edit_message_text("❌ Operação cancelada.")
+        await context.bot.send_message(
+            query.from_user.id,
+            "💵 GERENCIAR RENDAS EXTRAS",
+            reply_markup=gastos_keyboard()
+        )
+        return ConversationHandler.END
+    
+    if data.startswith("edit_extra_income_"):
+        income_id = int(data.split('_')[3])
+        context.user_data['selected_extra_income_id'] = income_id
+        
+        # Buscar informações da renda extra
+        user_id = query.from_user.id
+        incomes = db.get_extra_incomes(user_id)
+        selected_income = None
+        
+        for income in incomes:
+            if income['id'] == income_id:
+                selected_income = income
+                break
+        
+        if selected_income:
+            # Criar opções
+            keyboard = [
+                [InlineKeyboardButton("✏️ Renomear Origem", callback_data="edit_extra_origin")],
+                [InlineKeyboardButton("💰 Alterar Valor", callback_data="edit_extra_value")],
+                [InlineKeyboardButton("🗑️ Excluir Renda Extra", callback_data="delete_extra_income")],
+                [InlineKeyboardButton("❌ Cancelar", callback_data="cancel_extra_action")]
+            ]
+            
+            await query.edit_message_text(
+                f"✏️ EDITAR RENDA EXTRA\n\n"
+                f"📝 Origem: {selected_income['origem']}\n"
+                f"💰 Valor: R$ {selected_income['valor']:,.2f}\n\n"
+                f"Escolha uma ação:",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            return EDIT_EXTRA_INCOME_ACTION
+    
+    await query.edit_message_text("❌ Erro ao selecionar renda extra.")
+    return ConversationHandler.END
+
+async def edit_extra_income_action_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Processa a ação selecionada para a renda extra"""
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    income_id = context.user_data.get('selected_extra_income_id')
+    
+    if data == "cancel_extra_action":
+        await query.edit_message_text("❌ Operação cancelada.")
+        await context.bot.send_message(
+            query.from_user.id,
+            "💵 GERENCIAR RENDAS EXTRAS",
+            reply_markup=gastos_keyboard()
+        )
+        return ConversationHandler.END
+    
+    if data == "edit_extra_origin":
+        await query.edit_message_text(
+            "✏️ RENOMEAR ORIGEM\n\n"
+            "Digite o novo nome para a origem desta renda extra:"
+        )
+        return EDIT_EXTRA_INCOME_ORIGIN
+    
+    elif data == "edit_extra_value":
+        await query.edit_message_text(
+            "💰 ALTERAR VALOR\n\n"
+            "Digite o novo valor para esta renda extra:\n"
+            "(Ex: 600,00)"
+        )
+        return EDIT_EXTRA_INCOME_VALUE
+    
+    elif data == "delete_extra_income":
+        success = db.delete_extra_income(income_id)
+        
+        if success:
+            await query.edit_message_text(
+                "✅ RENDA EXTRA EXCLUÍDA!\n\n"
+                "A renda extra foi removida com sucesso.",
+                reply_markup=gastos_keyboard()
+            )
+        else:
+            await query.edit_message_text(
+                "❌ Erro ao excluir renda extra.",
+                reply_markup=gastos_keyboard()
+            )
+        return ConversationHandler.END
+    
+    return ConversationHandler.END
+
+async def edit_extra_income_origin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Processa a edição da origem da renda extra"""
+    new_origin = update.message.text.strip()
+    income_id = context.user_data.get('selected_extra_income_id')
+    
+    if not new_origin:
+        await update.message.reply_text("❌ Origem inválida. Digite novamente:")
+        return EDIT_EXTRA_INCOME_ORIGIN
+    
+    success = db.update_extra_income(income_id, origem=new_origin)
+    
+    if success:
+        await update.message.reply_text(
+            f"✅ ORIGEM ALTERADA!\n\n"
+            f"Novo nome: {new_origin}",
+            reply_markup=gastos_keyboard()
+        )
+    else:
+        await update.message.reply_text(
+            "❌ Erro ao alterar origem.",
+            reply_markup=gastos_keyboard()
+        )
+    
+    # Limpar dados temporários
+    context.user_data.clear()
+    return ConversationHandler.END
+
+async def edit_extra_income_value_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Processa a edição do valor da renda extra"""
+    try:
+        valor_text = update.message.text.replace(',', '.').strip()
+        new_value = float(valor_text)
+        income_id = context.user_data.get('selected_extra_income_id')
+        
+        if new_value <= 0:
+            await update.message.reply_text("❌ O valor deve ser maior que zero. Digite novamente:")
+            return EDIT_EXTRA_INCOME_VALUE
+        
+        success = db.update_extra_income(income_id, valor=new_value)
+        
+        if success:
+            await update.message.reply_text(
+                f"✅ VALOR ALTERADO!\n\n"
+                f"Novo valor: R$ {new_value:,.2f}",
+                reply_markup=gastos_keyboard()
+            )
+        else:
+            await update.message.reply_text(
+                "❌ Erro ao alterar valor.",
+                reply_markup=gastos_keyboard()
+            )
+        
+        # Limpar dados temporários
+        context.user_data.clear()
+        return ConversationHandler.END
+        
+    except ValueError:
+        await update.message.reply_text("❌ Valor inválido! Digite um número (ex: 600,00)")
+        return EDIT_EXTRA_INCOME_VALUE
 
 # ========== REGISTRO DE GASTOS ==========
 async def adicionar_gastos_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -812,27 +1719,14 @@ async def adicionar_gastos_handler(update: Update, context: ContextTypes.DEFAULT
         return ConversationHandler.END
     
     context.user_data['user_id'] = user_id
+    
+    # CORREÇÃO: Mostrar o menu de gastos corretamente
     await update.message.reply_text(
-        "🧮 GASTOS E RENDAS\n\nSelecione uma opção:",
-        reply_markup=gastos_keyboard()
+        "🧮 GASTOS E RENDAS\n\nO que você gostaria de fazer?",
+        reply_markup=gastos_keyboard()  # ← Este é o keyboard correto
     )
     return TIPO_GASTO
 
-    async def salario_options_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler específico para opções do menu de salários"""
-        text = update.message.text
-        logger.info(f"💰 Opção de salário selecionada: {text}")
-        
-        if 'Adicionar Salário' in text:
-            return await add_salary_handler(update, context)
-        elif 'Consultar Salários' in text:
-            return await consultar_salarios_handler(update, context)
-        elif 'Alterar Salários' in text:
-            return await alterar_salarios_handler(update, context)
-        else:
-            # Fallback para o main menu handler
-            return await main_menu_handler(update, context)
-            
 async def iniciar_registro_gasto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not db.user_exists(user_id):
@@ -863,7 +1757,7 @@ async def iniciar_registro_gasto(update: Update, context: ContextTypes.DEFAULT_T
             "📅 **SELECIONE O MÊS**\n\nEscolha o mês para ver as estatísticas:",
             reply_markup=MonthYearCalendar.create_month_year_calendar()
         )
-        return GASTOS_MES
+        return EXTRATO_MES
         
     elif 'Suas Categorias' in text:
         await update.message.reply_text(
@@ -893,12 +1787,19 @@ async def tipo_gasto_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("🛍️ Selecione a categoria:", reply_markup=categorias_flexiveis_keyboard())
         return CATEGORIA_FLEXIVEL
         
+    # CORREÇÃO: Adicionar tratamento para Salário e Renda extra
+    elif 'Salário' in text:
+        return await salario_handler(update, context)
+        
+    elif 'Renda extra' in text:
+        return await renda_extra_handler(update, context)
+        
     elif 'Voltar ao Menu' in text:
         await update.message.reply_text("🏠 MENU PRINCIPAL", reply_markup=main_keyboard())
         return ConversationHandler.END
         
     else:
-        await update.message.reply_text("❌ Selecione uma opção válida:", reply_markup=tipo_gasto_keyboard())
+        await update.message.reply_text("❌ Selecione uma opção válida:", reply_markup=gastos_keyboard())
         return TIPO_GASTO
 
 # Alias para o conversation handler
@@ -1119,6 +2020,79 @@ async def handle_date_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return DATA_GASTO
     
     return await process_date_selection(update, context, date_str)
+    
+async def handle_month_year_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Processa entrada manual de mês/ano para extrato"""
+    logger.info(f"handle_month_year_input chamado com texto: {update.message.text}")
+    
+    text = update.message.text.strip()
+    
+    # Remover espaços e caracteres não numéricos, exceto barra
+    clean_text = ''.join(c for c in text if c.isdigit() or c == '/')
+    
+    try:
+        # Tentar parsear como MM/AAAA
+        if '/' in clean_text:
+            parts = clean_text.split('/')
+            if len(parts) == 2:
+                month_str, year_str = parts
+                if len(month_str) == 2 and len(year_str) == 4:
+                    month = int(month_str)
+                    year = int(year_str)
+                else:
+                    raise ValueError("Formato inválido")
+            else:
+                raise ValueError("Formato inválido")
+        
+        # Tentar parsear como MMAAAA (6 dígitos)
+        elif len(clean_text) == 6:
+            month = int(clean_text[0:2])
+            year = int(clean_text[2:6])
+        
+        else:
+            raise ValueError("Formato inválido")
+        
+        # Validar mês e ano
+        if not (1 <= month <= 12):
+            await update.message.reply_text(
+                "❌ **Mês inválido!**\n\n"
+                "O mês deve estar entre 01 e 12.\n\n"
+                "💡 **Exemplos válidos:**\n"
+                "• Março → 03/2024 ou 032024\n"
+                "• Dezembro → 12/2023 ou 122023\n\n"
+                "Digite novamente:"
+            )
+            return EXTRATO_MES
+        
+        if not (2020 <= year <= 2100):
+            await update.message.reply_text(
+                "❌ **Ano inválido!**\n\n"
+                "O ano deve estar entre 2020 e 2100.\n\n"
+                "💡 **Exemplos válidos:**\n"
+                "• 2024 → 03/2024 ou 032024\n"
+                "• 2023 → 12/2023 ou 122023\n\n"
+                "Digite novamente:"
+            )
+            return EXTRATO_MES
+        
+        logger.info(f"Processando extrato para {month}/{year}")
+        # Mostrar extrato do mês selecionado - passar o update corretamente
+        await MonthYearCalendar.show_month_extrato(update, context, year, month)
+        return ConversationHandler.END  # Terminar a conversação após mostrar extrato
+        
+    except (ValueError, IndexError) as e:
+        logger.error(f"Erro ao processar entrada manual: {e}")
+        await update.message.reply_text(
+            "❌ **Formato inválido!**\n\n"
+            "📋 **Use um destes formatos:**\n"
+            "• **MM/AAAA** (ex: 03/2024)\n"
+            "• **MMAAAA** (ex: 032024)\n\n"
+            "💡 **Exemplos:**\n"
+            "• Março de 2024 → 03/2024 ou 032024\n"
+            "• Dezembro de 2023 → 12/2023 ou 122023\n\n"
+            "Digite o mês e ano novamente:"
+        )
+        return EXTRATO_MES
 
 async def process_date_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, date_str: str):
     user_id = context.user_data['user_id']
@@ -1151,6 +2125,55 @@ async def process_date_selection(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("❌ Erro ao registrar gasto.", reply_markup=gastos_keyboard())
         return ConversationHandler.END
 
+def parse_date_input(date_str):
+    """Converte entrada de data para formato DD/MM/AAAA"""
+    try:
+        # Remove qualquer caractere não numérico
+        clean_str = ''.join(c for c in date_str if c.isdigit())
+        
+        if len(clean_str) == 8:
+            # Formato DDMMAAAA
+            day = clean_str[0:2]
+            month = clean_str[2:4]
+            year = clean_str[4:8]
+            return f"{day}/{month}/{year}"
+        elif len(clean_str) == 6:
+            # Formato DDMMAA (assume século 20 para anos < 50, 21 para anos >= 50)
+            day = clean_str[0:2]
+            month = clean_str[2:4]
+            year_part = clean_str[4:6]
+            year = f"20{year_part}" if int(year_part) >= 50 else f"19{year_part}"
+            return f"{day}/{month}/{year}"
+        else:
+            return None
+    except Exception:
+        return None
+
+def validate_date(date_str):
+    """Valida se a data está no formato correto e é válida"""
+    try:
+        day, month, year = map(int, date_str.split('/'))
+        
+        # Verifica se os valores são razoáveis
+        if not (1 <= month <= 12):
+            return False
+        if not (1 <= day <= 31):
+            return False
+        if not (1900 <= year <= 2100):
+            return False
+            
+        # Verificação básica de dias por mês
+        if month in [4, 6, 9, 11] and day > 30:
+            return False
+        elif month == 2:
+            # Verificação simples para fevereiro (não considera anos bissextos)
+            if day > 29:
+                return False
+                
+        return True
+    except Exception:
+        return False
+        
 async def continuar_gastos_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     
@@ -1480,113 +2503,303 @@ async def confirm_gasto_outros_fixos_handler(update: Update, context: ContextTyp
     await update.message.reply_text("❌ Responda SIM ou NÃO.")
     return CONFIRM_GASTO_OUTROS_FIXOS
 
+# ========== SALÁRIOS ==========
+AGUARDANDO_FONTE_SALARIO, AGUARDANDO_VALOR_SALARIO = range(2)
+
+async def salarios_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Menu de gerenciamento de salários"""
+    query = update.callback_query
+    await query.answer()
+    
+    keyboard = [
+        [InlineKeyboardButton("💵 Adicionar Salário", callback_data="adicionar_salario")],
+        [InlineKeyboardButton("✏️ Alterar Salários", callback_data="alterar_salarios")],
+        [InlineKeyboardButton("📊 Consultar Salários", callback_data="consultar_salarios")],
+        [InlineKeyboardButton("🏠 Voltar ao Menu", callback_data="voltar_menu")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        text="💰 *Menu de Salários*\n\nEscolha uma opção:",
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def adicionar_salario_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Inicia o processo de adicionar salário"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Verificar se já tem salário principal
+    user_id = update.effective_user.id
+    salarios = db.get_salaries(user_id)  # ← corrigido
+    tem_principal = any(salario['principal'] for salario in salarios)
+    
+    context.user_data['adicionando_salario'] = True
+    context.user_data['eh_principal'] = not tem_principal
+    
+    mensagem = "💰 *Adicionar Salário*\n\n"
+    if not tem_principal:
+        mensagem += "📝 Este será seu *salário principal*.\n\n"
+    
+    mensagem += "Por favor, digite a *fonte/origem* deste salário:\n\n"
+    mensagem += "Exemplos:\n• Salário CLT\n• Freelance\n• Investimentos\n• Aluguel"
+    
+    await query.edit_message_text(
+        text=mensagem,
+        parse_mode='Markdown'
+    )
+    
+    return AGUARDANDO_FONTE_SALARIO
+
+async def receber_fonte_salario(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Recebe a fonte do salário e pede o valor"""
+    fonte = update.message.text.strip()
+    
+    if len(fonte) < 2:
+        await update.message.reply_text("❌ Por favor, digite uma fonte válida (mínimo 2 caracteres).")
+        return AGUARDANDO_FONTE_SALARIO
+    
+    context.user_data['fonte_salario'] = fonte
+    
+    mensagem = f"✅ Fonte: *{fonte}*\n\n"
+    mensagem += "Agora digite o *valor* do salário:\n\n"
+    mensagem += "Exemplos:\n• 2500.00\n• 1.500,00\n• R$ 3000"
+    
+    await update.message.reply_text(
+        text=mensagem,
+        parse_mode='Markdown'
+    )
+    
+    return AGUARDANDO_VALOR_SALARIO
+
+async def receber_valor_salario(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Recebe o valor do salário e salva no banco"""
+    try:
+        valor_texto = update.message.text.strip()
+        
+        # Limpar e converter o valor
+        valor_texto = valor_texto.replace('R$', '').replace(' ', '').replace('.', '').replace(',', '.')
+        valor = float(valor_texto)
+        
+        if valor <= 0:
+            await update.message.reply_text("❌ O valor deve ser maior que zero.")
+            return AGUARDANDO_VALOR_SALARIO
+        
+        user_id = update.effective_user.id
+        fonte = context.user_data['fonte_salario']
+        eh_principal = context.user_data['eh_principal']
+        
+        # Salvar no banco
+        db.add_salary(user_id, fonte, valor, eh_principal)  # ← corrigido
+        
+        # Limpar dados temporários
+        context.user_data.pop('fonte_salario', None)
+        context.user_data.pop('eh_principal', None)
+        context.user_data.pop('adicionando_salario', None)
+        
+        # Mostrar confirmação
+        mensagem = f"✅ *Salário adicionado com sucesso!*\n\n"
+        mensagem += f"💼 *Fonte:* {fonte}\n"
+        mensagem += f"💰 *Valor:* R$ {valor:,.2f}\n"
+        
+        if eh_principal:
+            mensagem += f"⭐ *Salário Principal*\n\n"
+        
+        await update.message.reply_text(
+            text=mensagem,
+            parse_mode='Markdown'
+        )
+        
+        # Mostrar extrato atualizado
+        await mostrar_extrato_salarios(update, context, user_id)
+        
+        return ConversationHandler.END
+        
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Valor inválido. Por favor, digite um valor numérico.\n\n"
+            "Exemplos: 2500.00, 1.500,00, R$ 3000"
+        )
+        return AGUARDANDO_VALOR_SALARIO
+
+async def mostrar_extrato_salarios(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int = None):
+    """Mostra o extrato completo de salários"""
+    if not user_id:
+        user_id = update.effective_user.id
+    
+    salarios = db.get_salaries(user_id)  # ← corrigido
+    
+    if not salarios:
+        mensagem = "📊 *Extrato de Salários*\n\n"
+        mensagem += "❌ Nenhum salário cadastrado.\n\n"
+        mensagem += "Use a opção *💵 Adicionar Salário* para cadastrar seu primeiro salário."
+        
+        if hasattr(update, 'callback_query') and update.callback_query:
+            await update.callback_query.edit_message_text(text=mensagem, parse_mode='Markdown')
+        else:
+            await update.message.reply_text(text=mensagem, parse_mode='Markdown')
+        return
+    
+    mensagem = "📊 *Extrato de Salários*\n\n"
+    total = 0
+    
+    for salario in salarios:
+        emoji = "⭐" if salario['principal'] else "📌"
+        mensagem += f"{emoji} *{salario['fonte']}*: R$ {salario['valor']:,.2f}\n"
+        total += salario['valor']
+    
+    mensagem += f"\n💎 *Total:* R$ {total:,.2f}"
+    
+    if hasattr(update, 'callback_query') and update.callback_query:
+        await update.callback_query.edit_message_text(text=mensagem, parse_mode='Markdown')
+    else:
+        await update.message.reply_text(text=mensagem, parse_mode='Markdown')
+
+async def consultar_salarios(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler para consultar salários"""
+    query = update.callback_query
+    await query.answer()
+    
+    await mostrar_extrato_salarios(update, context)
+
+async def alterar_salarios(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Menu para alterar salários existentes"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    salaries = db.get_salaries(user_id)
+    
+    if not salarios:
+        await query.edit_message_text(
+            text="❌ Nenhum salário cadastrado para alterar.",
+            parse_mode='Markdown'
+        )
+        return
+    
+    keyboard = []
+    for salario in salarios:
+        emoji = "⭐" if salario['principal'] else "📌"
+        texto_botao = f"{emoji} {salario['fonte']} - R$ {salario['valor']:,.2f}"
+        callback_data = f"editar_salario_{salario['id']}"
+        keyboard.append([InlineKeyboardButton(texto_botao, callback_data=callback_data)])
+    
+    keyboard.append([InlineKeyboardButton("🔙 Voltar", callback_data="salarios_menu")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        text="✏️ *Alterar Salários*\n\nSelecione o salário que deseja editar:",
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def editar_salario(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Menu de edição para um salário específico"""
+    query = update.callback_query
+    await query.answer()
+    
+    salario_id = int(query.data.replace('editar_salario_', ''))
+    user_id = update.effective_user.id
+    
+    # Buscar informações do salário
+    salaries = db.get_salaries(user_id)
+    salario = next((s for s in salarios if s['id'] == salario_id), None)
+    
+    if not salario:
+        await query.edit_message_text("❌ Salário não encontrado.")
+        return
+    
+    context.user_data['editando_salario_id'] = salario_id
+    
+    mensagem = f"✏️ *Editando Salário*\n\n"
+    mensagem += f"💼 *Fonte:* {salario['fonte']}\n"
+    mensagem += f"💰 *Valor:* R$ {salario['valor']:,.2f}\n"
+    
+    if salario['principal']:
+        mensagem += "⭐ *Salário Principal*\n\n"
+        mensagem += "O salário principal não pode ser excluído."
+    
+    keyboard = [
+        [InlineKeyboardButton("✏️ Alterar Fonte", callback_data=f"alterar_fonte_{salario_id}")],
+        [InlineKeyboardButton("💵 Alterar Valor", callback_data=f"alterar_valor_{salario_id}")],
+    ]
+    
+    if not salario['principal']:
+        keyboard.append([InlineKeyboardButton("⭐ Tornar Principal", callback_data=f"tornar_principal_{salario_id}")])
+        keyboard.append([InlineKeyboardButton("🗑️ Excluir", callback_data=f"excluir_salario_{salario_id}")])
+    
+    keyboard.append([InlineKeyboardButton("🔙 Voltar", callback_data="alterar_salarios")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        text=mensagem,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def excluir_salario_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler para excluir salário"""
+    query = update.callback_query
+    await query.answer()
+    
+    salario_id = int(query.data.replace('excluir_salario_', ''))
+    
+    if db.delete_salary(salario_id):  # ← corrigido
+        await query.edit_message_text(
+            text="✅ Salário excluído com sucesso!",
+            parse_mode='Markdown'
+        )
+    else:
+        await query.edit_message_text(
+            text="❌ Não é possível excluir o salário principal.",
+            parse_mode='Markdown'
+        )
+
+async def tornar_principal_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler para tornar um salário o principal"""
+    query = update.callback_query
+    await query.answer()
+    
+    salario_id = int(query.data.replace('tornar_principal_', ''))
+    user_id = update.effective_user.id
+    
+    db.set_principal_salary(salario_id, user_id)  # ← corrigido (antes podia usar tornar_principal)
+    
+    await query.edit_message_text(
+        text="✅ Salário definido como principal!",
+        parse_mode='Markdown'
+    )
+
+# Adicione também os handlers para alterar fonte e valor (serão similares aos de adicionar)
+
+async def cancelar_salario(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cancela o processo de adição/edição de salário"""
+    context.user_data.clear()
+    
+    if update.message:
+        await update.message.reply_text(
+            "❌ Operação cancelada.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+    
+    return ConversationHandler.END
+
 # ========== EXTRATO DETALHADO ==========
 async def extrato_gastos_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler para Meu Extrato - Lista todos os gastos detalhadamente"""
+    """Handler para Meu Extrato - Agora com seleção de mês"""
     user_id = update.effective_user.id
     if not db.user_exists(user_id):
         await update.message.reply_text("❌ Use /start para se cadastrar.")
         return ConversationHandler.END
         
-    # Buscar todas as transações do usuário
-    try:
-        transactions = db.get_all_transactions(user_id)
-        
-        if not transactions:
-            await update.message.reply_text(
-                "📝 **MEU EXTRATO**\n\n"
-                "Nenhum gasto registrado até o momento.\n\n"
-                "💡 Use '🏠 Registrar Gastos' para adicionar seu primeiro gasto!",
-                reply_markup=main_keyboard()
-            )
-            return ConversationHandler.END
-        
-        user_data = db.get_user_data(user_id)
-        nickname = user_data['nickname'] if user_data else 'Usuário'
-        
-        response = f"📊 **EXTRATO COMPLETO - {nickname}**\n\n"
-        
-        total_geral = 0
-        total_fixo = 0
-        total_flexivel = 0
-        
-        # Agrupar transações por mês
-        transacoes_por_mes = {}
-        for transacao in transactions:
-            try:
-                data_obj = datetime.datetime.strptime(transacao['data'], '%d/%m/%Y')
-                mes_ano = data_obj.strftime('%m/%Y')
-                if mes_ano not in transacoes_por_mes:
-                    transacoes_por_mes[mes_ano] = []
-                transacoes_por_mes[mes_ano].append(transacao)
-                
-                # Calcular totais
-                if transacao['tipo'] == 'fixo':
-                    total_fixo += transacao['valor']
-                else:
-                    total_flexivel += transacao['valor']
-                total_geral += transacao['valor']
-            except Exception as e:
-                logger.error(f"Erro ao processar transação: {e}")
-                continue
-        
-        # Listar transações por mês
-        for mes_ano, transacoes_mes in transacoes_por_mes.items():
-            mes, ano = mes_ano.split('/')
-            meses_ptbr = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
-                         "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
-            nome_mes = meses_ptbr[int(mes)-1]
-            
-            response += f"      📅 {nome_mes}/{ano}\n\n"
-            
-            for transacao in transacoes_mes:
-                emoji = "🏠" if transacao['tipo'] == 'fixo' else "🛍️"
-                response += f"• {emoji} {transacao['data']} - {transacao['categoria']}: R$ {transacao['valor']:,.2f}\n"
-            
-            response += "\n"
-        
-        # Adicionar resumo geral
-        response += f"      📋 RESUMO GERAL\n\n"
-        response += f"🏠 Gastos Fixos: R$ {total_fixo:,.2f}\n"
-        response += f"🛍️ Gastos Flexíveis: R$ {total_flexivel:,.2f}\n"
-        response += f"💰 Total Gasto: R$ {total_geral:,.2f}\n\n"
-        
-        if user_data and user_data['salario_liquido'] and user_data['salario_liquido'] > 0:
-            salario = user_data['salario_liquido']
-            saldo = salario - total_geral
-            percentual = (total_geral / salario * 100) if salario > 0 else 0
-            
-            response += f"💵 Salário: R$ {salario:,.2f}\n"
-            response += f"⚖️ Saldo: R$ {saldo:,.2f}\n"
-            response += f"📈 Comprometido: {percentual:.1f}%\n\n"
-            
-            if percentual <= 60:
-                response += "✅ Situação: ** Saudável **\n"
-            elif percentual <= 85:
-                response += "⚠️ Situação: ** Atenção **\n"
-            else:
-                response += "🚨 Situação: ** Crítico **\n"
-        
-        response += f"\n📊 Total de transações: {len(transactions)}"
-        
-        # Se a mensagem for muito longa, dividir em partes
-        if len(response) > 4000:
-            parte1 = response[:4000]
-            parte2 = response[4000:]
-            await update.message.reply_text(parte1, reply_markup=main_keyboard())
-            await update.message.reply_text(parte2, reply_markup=main_keyboard())
-        else:
-            await update.message.reply_text(response, reply_markup=main_keyboard())
-        
-    except Exception as e:
-        logger.error(f"Erro ao gerar extrato: {e}")
-        await update.message.reply_text(
-            "❌ Erro ao carregar extrato.\n"
-            "Tente novamente ou entre em contato com o suporte.",
-            reply_markup=main_keyboard()
-        )
-    
-    return ConversationHandler.END
+    await update.message.reply_text(
+        "📅 **SELECIONE O MÊS**\n\nEscolha o mês para ver o extrato detalhado:",
+        reply_markup=MonthYearCalendar.create_month_year_calendar()
+    )
+    return EXTRATO_MES
 
 # ========== RESUMO E ANÁLISE ==========
 async def resumo_gastos_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1649,6 +2862,676 @@ async def analise_detalhada_handler(update: Update, context: ContextTypes.DEFAUL
         await update.message.reply_text("❌ Erro na análise.", reply_markup=saude_financeira_keyboard())
     return ConversationHandler.END
 
+async def ver_metricas_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await analise_detalhada_handler(update, context)
+
+async def recomendacoes_ia_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    try:
+        await update.message.reply_text("🤖 Gerando recomendações...")
+        recomendacoes = await coach.finance_coach.get_personalized_recommendations(user_id)
+        await update.message.reply_text(
+            f"🧠 RECOMENDAÇÕES IA\n\n{recomendacoes}",
+            reply_markup=saude_financeira_keyboard()
+        )
+    except Exception as e:
+        logger.error(f"Erro nas recomendações: {e}")
+        await update.message.reply_text("❌ Erro nas recomendações.", reply_markup=saude_financeira_keyboard())
+    return ConversationHandler.END
+
+async def analise_detalhada_ia_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await analise_detalhada_handler(update, context)
+
+# ========== CONFIGURAÇÕES ==========
+async def edit_profile_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not db.user_exists(user_id):
+        await update.message.reply_text("❌ Use /start para se cadastrar.")
+        return ConversationHandler.END
+        
+    user_data = db.get_user_data(user_id)
+    await update.message.reply_text(
+        f"✏️ EDITAR PERFIL\n\n"
+        f"📝 Nome atual: {user_data['nickname']}\n"
+        f"💰 Salário atual: R$ {user_data['salario_liquido']:,.2f}\n\n"
+        f"Digite seu novo nome:",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return EDIT_NAME
+
+async def edit_name_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    new_name = update.message.text.strip()
+    if not new_name:
+        await update.message.reply_text("❌ Nome inválido. Digite novamente:")
+        return EDIT_NAME
+        
+    user_id = update.effective_user.id
+    db.update_user_nickname(user_id, new_name)
+    await update.message.reply_text(
+        f"✅ Nome alterado para: {new_name}",
+        reply_markup=config_keyboard()
+    )
+    return ConversationHandler.END
+    
+
+async def edit_salary_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not db.user_exists(user_id):
+        await update.message.reply_text("❌ Use /start para se cadastrar.")
+        return ConversationHandler.END
+        
+    user_data = db.get_user_data(user_id)
+    await update.message.reply_text(
+        f"💰 ALTERAR SALÁRIO\n\n"
+        f"Salário atual: R$ {user_data['salario_liquido']:,.2f}\n\n"
+        f"Digite o novo valor do seu salário líquido:",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return EDIT_SALARY
+
+
+async def edit_salary_process_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        salary_text = update.message.text.replace(',', '.').strip()
+        new_salary = float(salary_text)
+        
+        if new_salary <= 0:
+            await update.message.reply_text("❌ O valor deve ser maior que zero.")
+            return EDIT_SALARY
+            
+        user_id = update.effective_user.id
+        db.update_user_salary(user_id, new_salary)
+        await update.message.reply_text(
+            f"✅ Salário alterado para: R$ {new_salary:,.2f}",
+            reply_markup=config_keyboard()
+        )
+        return ConversationHandler.END
+        
+    except ValueError:
+        await update.message.reply_text("❌ Valor inválido! Digite um número, ex.: 1500,00")
+        return EDIT_SALARY
+
+async def reset_data_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🔄 REDEFINIR DADOS\n\n"
+        "⚠️ ATENÇÃO: Esta ação irá:\n"
+        "• ❌ Excluir TODOS os seus gastos\n"
+        "• ❌ Excluir TODOS os seus objetivos\n"
+        "• ❌ Manter apenas seu perfil básico\n\n"
+        "Tem certeza que deseja continuar?",
+        reply_markup=sim_nao_keyboard()
+    )
+    return CONFIRM_RESET
+
+async def confirm_reset_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    
+    if 'SIM' in text:
+        user_id = update.effective_user.id
+        db.reset_user_data(user_id)
+        await update.message.reply_text(
+            "✅ DADOS REDEFINIDOS!\n\n"
+            "Todos os seus gastos e objetivos foram excluídos.\n"
+            "Seu perfil básico foi mantido.",
+            reply_markup=main_keyboard()
+        )
+        return ConversationHandler.END
+        
+    elif 'NÃO' in text or 'NAO' in text:
+        await update.message.reply_text(
+            "✅ Operação cancelada.\n"
+            "Seus dados foram preservados.",
+            reply_markup=config_keyboard()
+        )
+        return ConversationHandler.END
+        
+    else:
+        await update.message.reply_text("❌ Confirme SIM ou NÃO:", reply_markup=sim_nao_keyboard())
+        return CONFIRM_RESET
+
+# ========== OBJETIVOS ==========
+async def objetivos_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🎯 OBJETIVOS FINANCEIROS\n\nGerencie suas metas financeiras:",
+        reply_markup=objetivos_keyboard()
+    )
+    return ConversationHandler.END
+
+async def add_goal_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🎯 ADICIONAR OBJETIVO\n\n"
+        "Escolha o tipo de objetivo:",
+        reply_markup=ReplyKeyboardMarkup([
+            ['💰 Economia Mensal', '🎯 Meta Específica'],
+            ['🏠 Voltar ao Menu']
+        ], resize_keyboard=True)
+    )
+    return GOAL_TYPE
+
+async def goal_type_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    
+    if 'Voltar ao Menu' in text:
+        await update.message.reply_text("🏠 MENU PRINCIPAL", reply_markup=main_keyboard())
+        return ConversationHandler.END
+        
+    if 'Economia Mensal' in text:
+        context.user_data['goal_type'] = 'economia_mensal'
+    elif 'Meta Específica' in text:
+        context.user_data['goal_type'] = 'meta_especifica'
+    else:
+        await update.message.reply_text("❌ Tipo inválido. Selecione uma opção:", reply_markup=update.message.reply_markup)
+        return GOAL_TYPE
+    
+    await update.message.reply_text(
+        "📝 DESCRIÇÃO DO OBJETIVO\n\n"
+        "Descreva seu objetivo:\n"
+        "(Ex: Viagem para a praia, Novo celular, Reserva de emergência)",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return GOAL_DESCRIPTION
+
+async def goal_description_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    description = update.message.text.strip()
+    if not description:
+        await update.message.reply_text("❌ Descrição inválida. Digite novamente:")
+        return GOAL_DESCRIPTION
+        
+    context.user_data['goal_description'] = description
+    
+    if context.user_data['goal_type'] == 'economia_mensal':
+        await update.message.reply_text(
+            "💰 VALOR DA ECONOMIA\n\n"
+            "Qual valor você quer economizar por mês?\n"
+            "(Ex: 300,00)",
+            reply_markup=ReplyKeyboardRemove()
+        )
+    else:
+        await update.message.reply_text(
+            "🎯 VALOR DA META\n\n"
+            "Qual o valor total da sua meta?\n"
+            "(Ex: 2000,00)",
+            reply_markup=ReplyKeyboardRemove()
+        )
+    return GOAL_TARGET
+
+async def goal_target_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        target_text = update.message.text.replace(',', '.').strip()
+        target = float(target_text)
+        
+        if target <= 0:
+            await update.message.reply_text("❌ O valor deve ser maior que zero.")
+            return GOAL_TARGET
+            
+        context.user_data['goal_target'] = target
+        
+        if context.user_data['goal_type'] == 'economia_mensal':
+            # Para economia mensal, não precisa de prazo
+            user_id = update.effective_user.id
+            success = db.add_goal(
+                user_id,
+                context.user_data['goal_description'],
+                'economia_mensal',
+                target,
+                None  # Sem prazo para economia mensal
+            )
+            
+            if success:
+                await update.message.reply_text(
+                    f"✅ OBJETIVO CRIADO!\n\n"
+                    f"📝 {context.user_data['goal_description']}\n"
+                    f"💰 Economia mensal: R$ {target:,.2f}\n"
+                    f"📊 Tipo: Economia Mensal",
+                    reply_markup=objetivos_keyboard()
+                )
+            else:
+                await update.message.reply_text("❌ Erro ao criar objetivo.", reply_markup=objetivos_keyboard())
+            
+            return ConversationHandler.END
+        else:
+            # Para meta específica, pedir prazo
+            await update.message.reply_text(
+                "📅 PRAZO DA META\n\n"
+                "Escolha a data limite para atingir sua meta:",
+                reply_markup=Calendar.create_calendar()
+            )
+            return GOAL_DEADLINE_CALENDAR
+            
+    except ValueError:
+        await update.message.reply_text("❌ Valor inválido! Digite um número, ex.: 300,00")
+        return GOAL_TARGET
+
+async def goal_deadline_manual_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip().lower()
+    
+    if text == 'hoje':
+        date_str = datetime.datetime.now().strftime('%d/%m/%Y')
+    else:
+        date_str = parse_date_input(text)
+        if not date_str or not validate_date(date_str):
+            await update.message.reply_text(
+                "❌ Formato de data inválido!\n"
+                "Formatos aceitos: DD/MM/AAAA ou DDMMAAAA\n"
+                "Ex.: 15/03/2024 ou 15032024\n"
+                "Ou use 'hoje'."
+            )
+            return GOAL_DEADLINE
+    
+    return await process_goal_creation(update, context, date_str)
+
+async def goal_deadline_calendar_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    try:
+        if query.data.startswith("CAL_DAY_"):
+            parts = query.data.split('_')
+            year, month, day = int(parts[2]), int(parts[3]), int(parts[4])
+            date_str = f"{day:02d}/{month:02d}/{year}"
+            
+            await query.edit_message_text(f"✅ Data selecionada: {date_str}")
+            return await process_goal_creation(update, context, date_str)
+            
+        else:
+            # Outras ações do calendário
+            await Calendar.handle_callback(update, context)
+            return GOAL_DEADLINE_CALENDAR
+            
+    except Exception as e:
+        logger.error(f"Erro no calendário de objetivos: {e}")
+        await query.message.reply_text("❌ Erro ao selecionar data.", reply_markup=objetivos_keyboard())
+        return ConversationHandler.END
+
+async def process_goal_creation(update: Update, context: ContextTypes.DEFAULT_TYPE, deadline: str):
+    user_id = update.effective_user.id
+    
+    success = db.add_goal(
+        user_id,
+        context.user_data['goal_description'],
+        'meta_especifica',
+        context.user_data['goal_target'],
+        deadline
+    )
+    
+    if success:
+        await update.message.reply_text(
+            f"✅ OBJETIVO CRIADO!\n\n"
+            f"📝 {context.user_data['goal_description']}\n"
+            f"💰 Valor: R$ {context.user_data['goal_target']:,.2f}\n"
+            f"📅 Prazo: {deadline}\n"
+            f"📊 Tipo: Meta Específica",
+            reply_markup=objetivos_keyboard()
+        )
+    else:
+        await update.message.reply_text("❌ Erro ao criar objetivo.", reply_markup=objetivos_keyboard())
+    
+    return ConversationHandler.END
+
+async def meus_objetivos_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    goals = db.get_user_goals(user_id)
+    
+    if not goals:
+        await update.message.reply_text(
+            "🎯 MEUS OBJETIVOS\n\n"
+            "Você ainda não tem objetivos cadastrados.\n"
+            "Use '🎯 Adicionar Objetivo' para criar seu primeiro objetivo.",
+            reply_markup=objetivos_keyboard()
+        )
+        return ConversationHandler.END
+    
+    response = "🎯 MEUS OBJETIVOS\n\n"
+    
+    for i, goal in enumerate(goals, 1):
+        progresso = goal['progresso'] or 0
+        porcentagem = (progresso / goal['valor_meta']) * 100 if goal['valor_meta'] > 0 else 0
+        
+        if goal['tipo'] == 'economia_mensal':
+            response += f"{i}. 💰 {goal['descricao']}\n"
+            response += f"   📊 Economia mensal: R$ {goal['valor_meta']:,.2f}\n"
+            response += f"   📈 Progresso: R$ {progresso:,.2f} ({porcentagem:.1f}%)\n"
+        else:
+            response += f"{i}. 🎯 {goal['descricao']}\n"
+            response += f"   💰 Meta: R$ {goal['valor_meta']:,.2f}\n"
+            response += f"   📈 Progresso: R$ {progresso:,.2f} ({porcentagem:.1f}%)\n"
+            if goal['prazo']:
+                response += f"   📅 Prazo: {goal['prazo']}\n"
+        
+        # Barra de progresso
+        barras = int(porcentagem / 10)
+        barra_progresso = "🟩" * barras + "⬜" * (10 - barras)
+        response += f"   {barra_progresso} {porcentagem:.1f}%\n\n"
+    
+    await update.message.reply_text(response, reply_markup=objetivos_keyboard())
+    return ConversationHandler.END
+
+async def update_goal_progress_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    goals = db.get_user_goals(user_id)
+    
+    if not goals:
+        await update.message.reply_text(
+            "📊 ATUALIZAR PROGRESSO\n\n"
+            "Você ainda não tem objetivos cadastrados.",
+            reply_markup=objetivos_keyboard()
+        )
+        return ConversationHandler.END
+    
+    keyboard = []
+    for goal in goals:
+        progresso = goal['progresso'] or 0
+        porcentagem = (progresso / goal['valor_meta']) * 100 if goal['valor_meta'] > 0 else 0
+        
+        button_text = f"{goal['descricao']} - {porcentagem:.1f}%"
+        keyboard.append([InlineKeyboardButton(button_text, callback_data=f"goal_{goal['id']}")])
+    
+    keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data="cancel_update")])
+    
+    await update.message.reply_text(
+        "📊 ATUALIZAR PROGRESSO\n\n"
+        "Selecione o objetivo que deseja atualizar:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    return SELECT_GOAL
+
+async def handle_goal_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "cancel_update":
+        await query.edit_message_text("❌ Operação cancelada.")
+        await context.bot.send_message(
+            query.from_user.id,
+            "🎯 OBJETIVOS",
+            reply_markup=objetivos_keyboard()
+        )
+        return ConversationHandler.END
+    
+    if query.data.startswith("goal_"):
+        goal_id = int(query.data.replace('goal_', ''))
+        context.user_data['selected_goal_id'] = goal_id
+        
+        # Buscar informações do objetivo
+        goals = db.get_user_goals(query.from_user.id)
+        selected_goal = None
+        
+        for goal in goals:
+            if goal['id'] == goal_id:
+                selected_goal = goal
+                break
+        
+        if selected_goal:
+            progresso = selected_goal['progresso'] or 0
+            porcentagem = (progresso / selected_goal['valor_meta']) * 100 if selected_goal['valor_meta'] > 0 else 0
+            
+            await query.edit_message_text(
+                f"📊 ATUALIZAR PROGRESSO\n\n"
+                f"🎯 {selected_goal['descricao']}\n"
+                f"💰 Meta: R$ {selected_goal['valor_meta']:,.2f}\n"
+                f"📈 Progresso atual: R$ {progresso:,.2f} ({porcentagem:.1f}%)\n\n"
+                f"Digite o novo valor do progresso:\n"
+                f"(Ex: 500,00)",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            return UPDATE_GOAL_PROGRESS
+    
+    await query.edit_message_text("❌ Erro ao selecionar objetivo.")
+    return ConversationHandler.END
+
+async def update_goal_value_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        progress_text = update.message.text.replace(',', '.').strip()
+        new_progress = float(progress_text)
+        
+        if new_progress < 0:
+            await update.message.reply_text("❌ O valor não pode ser negativo.")
+            return UPDATE_GOAL_PROGRESS
+        
+        goal_id = context.user_data.get('selected_goal_id')
+        success = db.update_goal_progress(goal_id, new_progress)
+        
+        if success:
+            await update.message.reply_text(
+                f"✅ PROGRESSO ATUALIZADO!\n\n"
+                f"Novo valor: R$ {new_progress:,.2f}",
+                reply_markup=objetivos_keyboard()
+            )
+        else:
+            await update.message.reply_text("❌ Erro ao atualizar progresso.", reply_markup=objetivos_keyboard())
+        
+        return ConversationHandler.END
+        
+    except ValueError:
+        await update.message.reply_text("❌ Valor inválido! Digite um número, ex.: 500,00")
+        return UPDATE_GOAL_PROGRESS
+
+async def delete_goal_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    goals = db.get_user_goals(user_id)
+    
+    if not goals:
+        await update.message.reply_text(
+            "🗑️ EXCLUIR OBJETIVO\n\n"
+            "Você ainda não tem objetivos cadastrados.",
+            reply_markup=objetivos_keyboard()
+        )
+        return ConversationHandler.END
+    
+    keyboard = []
+    for goal in goals:
+        progresso = goal['progresso'] or 0
+        porcentagem = (progresso / goal['valor_meta']) * 100 if goal['valor_meta'] > 0 else 0
+        
+        button_text = f"{goal['descricao']} - {porcentagem:.1f}%"
+        keyboard.append([InlineKeyboardButton(button_text, callback_data=f"delete_goal_{goal['id']}")])
+    
+    keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data="cancel_delete")])
+    
+    await update.message.reply_text(
+        "🗑️ EXCLUIR OBJETIVO\n\n"
+        "Selecione o objetivo que deseja excluir:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    return SELECT_GOAL_DELETE
+
+async def handle_goal_delete_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "cancel_delete":
+        await query.edit_message_text("❌ Operação cancelada.")
+        await context.bot.send_message(
+            query.from_user.id,
+            "🎯 OBJETIVOS",
+            reply_markup=objetivos_keyboard()
+        )
+        return ConversationHandler.END
+    
+    if query.data.startswith("delete_goal_"):
+        goal_id = int(query.data.replace('delete_goal_', ''))
+        context.user_data['selected_goal_id'] = goal_id
+        
+        # Buscar informações do objetivo
+        goals = db.get_user_goals(query.from_user.id)
+        selected_goal = None
+        
+        for goal in goals:
+            if goal['id'] == goal_id:
+                selected_goal = goal
+                break
+        
+        if selected_goal:
+            keyboard = [
+                [InlineKeyboardButton("✅ SIM, Excluir", callback_data=f"confirm_delete_{goal_id}")],
+                [InlineKeyboardButton("❌ NÃO, Cancelar", callback_data="cancel_confirm_delete")]
+            ]
+            
+            await query.edit_message_text(
+                f"🗑️ CONFIRMAR EXCLUSÃO\n\n"
+                f"Tem certeza que deseja excluir este objetivo?\n\n"
+                f"🎯 {selected_goal['descricao']}\n"
+                f"💰 Meta: R$ {selected_goal['valor_meta']:,.2f}\n"
+                f"📈 Progresso: R$ {selected_goal['progresso'] or 0:,.2f}\n\n"
+                f"⚠️ Esta ação não pode ser desfeita!",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            return CONFIRM_DELETE_GOAL
+    
+    await query.edit_message_text("❌ Erro ao selecionar objetivo.")
+    return ConversationHandler.END
+
+async def handle_confirm_delete_goal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "cancel_confirm_delete":
+        await query.edit_message_text("❌ Exclusão cancelada.")
+        await context.bot.send_message(
+            query.from_user.id,
+            "🎯 OBJETIVOS",
+            reply_markup=objetivos_keyboard()
+        )
+        return ConversationHandler.END
+    
+    if query.data.startswith("confirm_delete_"):
+        goal_id = int(query.data.replace('confirm_delete_', ''))
+        success = db.delete_goal(goal_id)
+        
+        if success:
+            await query.edit_message_text(
+                "✅ OBJETIVO EXCLUÍDO!\n\n"
+                "O objetivo foi removido com sucesso.",
+                reply_markup=objetivos_keyboard()
+            )
+        else:
+            await query.edit_message_text(
+                "❌ Erro ao excluir objetivo.",
+                reply_markup=objetivos_keyboard()
+            )
+    
+    return ConversationHandler.END
+
+# ========== EDUCAÇÃO FINANCEIRA ==========
+async def educacao_financeira_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🎓 EDUCAÇÃO FINANCEIRA\n\n"
+        "Aprenda sobre finanças e melhore sua saúde financeira:",
+        reply_markup=educacao_keyboard()
+    )
+    return ConversationHandler.END
+
+async def dica_do_dia_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    dica = coach.get_daily_tip()
+    await update.message.reply_text(
+        f"💡 DICA DO DIA\n\n{dica}",
+        reply_markup=educacao_keyboard()
+    )
+    return ConversationHandler.END
+
+async def glossario_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "📚 GLOSSÁRIO FINANCEIRO\n\n"
+        "Em desenvolvimento...",
+        reply_markup=educacao_keyboard()
+    )
+    return ConversationHandler.END
+
+async def modulos_educativos_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🎓 MÓDULOS EDUCATIVOS\n\n"
+        "Em desenvolvimento...",
+        reply_markup=educacao_keyboard()
+    )
+    return ConversationHandler.END
+
+async def handle_modulos_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    
+    if data.startswith("modulo_"):
+        modulo_id = data.replace("modulo_", "")
+        # Implementar lógica dos módulos aqui
+        await query.edit_message_text(
+            f"🎓 Módulo {modulo_id}\n\nEm desenvolvimento...",
+            reply_markup=educacao_keyboard()
+        )
+    return ConversationHandler.END
+
+# ========== HANDLER PRINCIPAL ==========
+async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler principal para todas as mensagens do menu"""
+    user_id = update.effective_user.id
+    
+    # Verificar se o usuário existe
+    if not db.user_exists(user_id):
+        await update.message.reply_text("❌ Use /start para se cadastrar primeiro.")
+        return ConversationHandler.END
+    
+    text = update.message.text
+    
+    # Mapeamento dos handlers principais - ADICIONAR ESTAS LINHAS:
+    if text == '💰 Salário':
+        return await salario_handler(update, context)
+    elif text == '💵 Renda extra':
+        return await renda_extra_handler(update, context)
+    
+    # Mapeamento dos handlers principais
+    handlers = {
+        '🧮 Gastos / Rendas': adicionar_gastos_handler,
+        '🧾 Meu Extrato': extrato_gastos_handler,
+        '📈 Saúde Financeira': saude_financeira_handler,
+        '🎓 Educação Financeira': educacao_financeira_handler,
+        '🎯 Objetivos': objetivos_handler,
+        '⚙️ Configurações': lambda u, c: u.message.reply_text("⚙️ CONFIGURAÇÕES", reply_markup=config_keyboard()),
+        '❓ Ajuda': ajuda_handler,
+        
+        # Submenus de Gastos
+        '🏦 Gastos Fixos': iniciar_registro_gasto,
+        '🛍️ Gastos Flexíveis': iniciar_registro_gasto,
+        '💰 Salário': salario_handler,
+        '💵 Renda extra': renda_extra_handler,
+        
+        # Submenus de Saúde Financeira
+        '📊 Ver Métricas Detalhadas': ver_metricas_handler,
+        '🧠 Recomendações IA': recomendacoes_ia_handler,
+        '📈 Análise Detalhada com IA': analise_detalhada_ia_handler,
+        
+        # Submenus de Educação
+        '💡 Dica do Dia': dica_do_dia_handler,
+        '📚 Glossário': glossario_handler,
+        '🎓 Módulos Educativos': modulos_educativos_handler,
+        
+        # Submenus de Configurações
+        '✏️ Editar Perfil': edit_profile_handler,
+        '''
+        '💰 Alterar Salário': edit_salary_handler,
+        '''
+        '🔄 Redefinir': reset_data_handler,
+        
+        # Submenus de Objetivos
+        '🎯 Adicionar Objetivo': add_goal_handler,
+        '📊 Atualizar Progresso': update_goal_progress_handler,
+        '🗑️ Excluir Objetivo': delete_goal_handler,
+        '📋 Meus Objetivos': meus_objetivos_handler,
+        
+        # Voltar ao Menu
+        '🏠 Voltar ao Menu': lambda u, c: u.message.reply_text("🏠 MENU PRINCIPAL", reply_markup=main_keyboard()),
+    }
+    
+    if text in handlers:
+        return await handlers[text](update, context)
+    else:
+        await update.message.reply_text(
+            "❌ Comando não reconhecido.\n\n"
+            "Use o menu abaixo para navegar:",
+            reply_markup=main_keyboard()
+        )
+        return ConversationHandler.END
+
+# ========== HANDLERS DE CALLBACK ==========
 async def handle_analise_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1690,1923 +3573,44 @@ async def handle_analise_callback(update: Update, context: ContextTypes.DEFAULT_
             await query.edit_message_text("🤖 Gerando metas sugeridas...")
             metas = await coach.finance_coach.get_suggested_goals(user_id)
             await query.edit_message_text(
-                f"🎯 METAS SUGERIDAS\n\n{metas}",
+                f"🎯 **METAS SUGERIDAS**\n\n{metas}",
                 reply_markup=analise_detalhada_inline_keyboard()
             )
             
         elif data == "analise_recomendacoes":
             await query.edit_message_text("🤖 Gerando recomendações...")
-            recs = await coach.finance_coach.get_personalized_recommendations(user_id)
+            recomendacoes = await coach.finance_coach.get_personalized_recommendations(user_id)
             await query.edit_message_text(
-                f"💡 RECOMENDAÇÕES\n\n{recs}",
+                f"🧠 **RECOMENDAÇÕES IA**\n\n{recomendacoes}",
                 reply_markup=analise_detalhada_inline_keyboard()
             )
             
         elif data == "analise_voltar":
-            await query.edit_message_text("Voltando ao menu...")
+            await query.edit_message_text("🏠 Voltando ao Menu Principal")
             await context.bot.send_message(
                 user_id, 
-                "📈 SAÚDE FINANCEIRA", 
-                reply_markup=saude_financeira_keyboard()
-            )
-            
-    except Exception as e:
-        logger.error(f"Erro no callback: {e}")
-        await query.edit_message_text("❌ Erro ao processar.", reply_markup=analise_detalhada_inline_keyboard())
-
-# ========== OBJETIVOS ==========
-async def objetivos_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🎯 OBJETIVOS FINANCEIROS\n\nGerencie suas metas:",
-        reply_markup=objetivos_keyboard()
-    )
-    return ConversationHandler.END
-
-async def add_goal_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🎯 VAMOS CRIAR SEU OBJETIVO!\n\n"
-        
-        "Primeiro, qual o TIPO do seu objetivo?\n\n"
-        
-        "Sugestões:\n"
-        "💰 Economia - ex: reserva de emergência\n"
-        "📈 Investimento - ex: aplicações\n" 
-        "🛒 Compra - ex: celular, móveis\n"
-        "🎓 Educação - ex: cursos, faculdade\n"
-        "🏠 Moradia - ex: casa, reforma\n"
-        "🚗 Transporte - ex: carro, manutenção\n"
-        "💊 Saúde - ex: tratamentos, planos\n"
-        "✈️ Viagem - ex: férias, passeios\n\n"
-        
-        "Digite o tipo do seu objetivo:",
-        reply_markup=ReplyKeyboardRemove()
-    )
-    return GOAL_TYPE
-    
-async def goal_type_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    goal_type = update.message.text.strip()
-    if not goal_type:
-        await update.message.reply_text("❌ Tipo de objetivo inválido. Digite novamente:")
-        return GOAL_TYPE
-        
-    context.user_data['goal_type'] = goal_type
-    await update.message.reply_text("📝 Descreva o objetivo (ex: 'Reserva de emergência', 'Viagem para praia'):")
-    return GOAL_DESCRIPTION
-
-async def goal_description_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    description = update.message.text.strip()
-    if not description:
-        await update.message.reply_text("❌ Descrição inválida. Digite novamente:")
-        return GOAL_DESCRIPTION
-        
-    context.user_data['goal_description'] = description
-    await update.message.reply_text("💰 Qual o valor meta? (ex: 1000,00)")
-    return GOAL_TARGET
-
-async def goal_target_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        target_text = update.message.text.replace(',', '.').strip()
-        target = float(target_text)
-        
-        if target <= 0:
-            await update.message.reply_text("❌ O valor deve ser maior que zero. Digite novamente:")
-            return GOAL_TARGET
-            
-        context.user_data['goal_target'] = target
-        
-        # Redirecionar para o calendário em vez de pedir entrada manual
-        await update.message.reply_text(
-            "📅 **SELECIONE O PRAZO DO OBJETIVO**\n\n"
-            "Escolha a data limite para alcançar sua meta:",
-            reply_markup=Calendar.create_calendar()
-        )
-        return GOAL_DEADLINE_CALENDAR
-        
-    except ValueError:
-        await update.message.reply_text("❌ Valor inválido! Digite um número (ex: 1000,00):")
-        return GOAL_TARGET
-
-async def goal_deadline_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler para selecionar o prazo do objetivo usando calendário"""
-    await update.message.reply_text(
-        "📅 **SELECIONE O PRAZO DO OBJETIVO**\n\n"
-        "Escolha a data limite para alcançar sua meta:",
-        reply_markup=Calendar.create_calendar()
-    )
-    return GOAL_DEADLINE_CALENDAR
-    
-# Adicione este novo estado na seção de estados (logo após GOAL_DEADLINE)
-GOAL_DEADLINE_CALENDAR = 35  # Ajuste o número conforme necessário
-
-async def goal_deadline_calendar_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Processa a seleção da data do calendário para objetivos"""
-    query = update.callback_query
-    await query.answer()
-    data = query.data
-
-    try:
-        if data == "CAL_TODAY":
-            today = datetime.datetime.now().strftime('%d/%m/%Y')
-            return await goal_handle_date_selection(update, context, today)
-
-        if data == "CAL_MANUAL":
-            await query.message.reply_text(
-                "📅 DIGITE A DATA DO PRAZO\n\nFormatos aceitos:\n• DD/MM/AAAA\n• DDMMAAAA\n• 'hoje' para data atual",
-                reply_markup=ReplyKeyboardRemove()
-            )
-            return GOAL_DEADLINE
-
-        if data.startswith("CAL_DAY_"):
-            parts = data.split('_')
-            year, month, day = int(parts[2]), int(parts[3]), int(parts[4])
-            selected_date = f"{day:02d}/{month:02d}/{year}"
-            return await goal_handle_date_selection(update, context, selected_date)
-
-        if data.startswith("CAL_PREV_") or data.startswith("CAL_NEXT_"):
-            parts = data.split('_')
-            year, month = int(parts[2]), int(parts[3])
-            
-            if data.startswith("CAL_PREV_"):
-                month -= 1
-                if month < 1:
-                    month, year = 12, year - 1
-            else:
-                month += 1
-                if month > 12:
-                    month, year = 1, year + 1
-            
-            try:
-                await query.edit_message_reply_markup(reply_markup=Calendar.create_calendar(year, month))
-            except Exception:
-                await context.bot.send_message(
-                    chat_id=query.from_user.id,
-                    text="📅 Navegação do calendário:",
-                    reply_markup=Calendar.create_calendar(year, month)
-                )
-            return GOAL_DEADLINE_CALENDAR
-
-        return GOAL_DEADLINE_CALENDAR
-
-    except Exception as e:
-        logger.error(f"Erro no calendário de objetivos: {e}")
-        await query.message.reply_text("❌ Erro ao processar data.", reply_markup=objetivos_keyboard())
-        return ConversationHandler.END
-
-async def goal_handle_date_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, date_str: str):
-    """Processa a data selecionada para o objetivo"""
-    query = update.callback_query
-    user_id = update.effective_user.id
-    
-    goal_type = context.user_data['goal_type']
-    description = context.user_data['goal_description']
-    target = context.user_data['goal_target']
-    
-    # Usar a função correta do banco de dados
-    success = db.add_goal(user_id, goal_type, description, target, date_str)
-    
-    if success:
-        try:
-            await query.edit_message_text(f"✅ Data selecionada: {date_str}")
-        except Exception:
-            pass
-
-        await query.message.reply_text(
-            f"✅ OBJETIVO ADICIONADO!\n\n"
-            f"📋 **Detalhes:**\n"
-            f"• 🎯 Tipo: {goal_type}\n"
-            f"• 📝 Descrição: {description}\n"
-            f"• 💰 Meta: R$ {target:,.2f}\n"
-            f"• 📅 Prazo: {date_str}\n\n"
-            f"💪 Comece a registrar seu progresso!",
-            reply_markup=objetivos_keyboard()
-        )
-    else:
-        await query.message.reply_text(
-            "❌ Erro ao adicionar objetivo.\n"
-            "Tente novamente ou verifique os dados.",
-            reply_markup=objetivos_keyboard()
-        )
-    
-    # Limpar dados temporários
-    context.user_data.clear()
-    return ConversationHandler.END
-    
-async def goal_deadline_manual_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler para entrada manual da data do prazo"""
-    deadline_input = update.message.text.strip().lower()
-    
-    # Processar data
-    if deadline_input == 'hoje':
-        deadline = datetime.datetime.now().strftime('%d/%m/%Y')
-    else:
-        deadline = parse_date_input(deadline_input)
-        if not deadline or not validate_date(deadline):
-            await update.message.reply_text(
-                "❌ Data inválida!\n\n"
-                "Formatos aceitos:\n"
-                "• DD/MM/AAAA (ex: 31/12/2024)\n"
-                "• DDMMAAAA (ex: 31122024)\n"
-                "• 'hoje' para data atual\n\n"
-                "Digite novamente:"
-            )
-            return GOAL_DEADLINE
-    
-    return await goal_handle_date_selection_manual(update, context, deadline)
-
-async def goal_handle_date_selection_manual(update: Update, context: ContextTypes.DEFAULT_TYPE, date_str: str):
-    """Processa a data manual para o objetivo"""
-    user_id = update.effective_user.id
-    
-    goal_type = context.user_data['goal_type']
-    description = context.user_data['goal_description']
-    target = context.user_data['goal_target']
-    
-    # Usar a função correta do banco de dados
-    success = db.add_goal(user_id, goal_type, description, target, date_str)
-    
-    if success:
-        await update.message.reply_text(
-            f"✅ OBJETIVO ADICIONADO!\n\n"
-            f"📋 **Detalhes:**\n"
-            f"• 🎯 Tipo: {goal_type}\n"
-            f"• 📝 Descrição: {description}\n"
-            f"• 💰 Meta: R$ {target:,.2f}\n"
-            f"• 📅 Prazo: {date_str}\n\n"
-            f"💪 Comece a registrar seu progresso!",
-            reply_markup=objetivos_keyboard()
-        )
-    else:
-        await update.message.reply_text(
-            "❌ Erro ao adicionar objetivo.\n"
-            "Tente novamente ou verifique os dados.",
-            reply_markup=objetivos_keyboard()
-        )
-    
-    # Limpar dados temporários
-    context.user_data.clear()
-    return ConversationHandler.END
-
-async def update_goal_progress_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Inicia o processo de atualização do progresso de um objetivo"""
-    user_id = update.effective_user.id
-    goals = db.get_goals(user_id)
-    
-    if not goals:
-        await update.message.reply_text(
-            "❌ Você não tem objetivos cadastrados.\n\n"
-            "Use '🎯 Adicionar Objetivo' para criar seu primeiro objetivo.",
-            reply_markup=objetivos_keyboard()
-        )
-        return ConversationHandler.END
-    
-    # Criar keyboard inline com objetivos
-    keyboard = []
-    for goal in goals:
-        if not goal['concluido']:
-            # CORREÇÃO: Garantir que os valores sejam números
-            valor_meta = float(goal['valor_meta']) if goal['valor_meta'] else 0
-            valor_atual = float(goal['valor_atual']) if goal['valor_atual'] else 0
-            progresso = (valor_atual / valor_meta * 100) if valor_meta > 0 else 0
-            button_text = f"{goal['descricao']} - {progresso:.1f}%"
-            keyboard.append([InlineKeyboardButton(button_text, callback_data=f"goal_{goal['id']}")])
-    
-    if not keyboard:
-        await update.message.reply_text(
-            "✅ Todos os seus objetivos estão concluídos! 🎉",
-            reply_markup=objetivos_keyboard()
-        )
-        return ConversationHandler.END
-    
-    keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data="goal_cancel")])
-    
-    await update.message.reply_text(
-        "📊 ATUALIZAR PROGRESSO\n\nSelecione o objetivo que deseja atualizar:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    return SELECT_GOAL
-
-async def handle_goal_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Processa a seleção de um objetivo para atualização"""
-    query = update.callback_query
-    await query.answer()
-    
-    data = query.data
-    
-    if data == "goal_cancel":
-        await query.edit_message_text("❌ Operação cancelada.")
-        await context.bot.send_message(
-            query.from_user.id,
-            "🎯 OBJETIVOS",
-            reply_markup=objetivos_keyboard()
-        )
-        return ConversationHandler.END
-    
-    if data.startswith("goal_"):
-        goal_id = int(data.split('_')[1])
-        context.user_data['selected_goal_id'] = goal_id
-        
-        # Buscar informações do objetivo
-        user_id = query.from_user.id
-        goals = db.get_goals(user_id)
-        selected_goal = None
-        
-        for goal in goals:
-            if goal['id'] == goal_id:
-                selected_goal = goal
-                break
-        
-        if selected_goal:
-            # CORREÇÃO: Garantir que os valores sejam números
-            valor_meta = float(selected_goal['valor_meta']) if selected_goal['valor_meta'] else 0
-            valor_atual = float(selected_goal['valor_atual']) if selected_goal['valor_atual'] else 0
-            progresso = (valor_atual / valor_meta * 100) if valor_meta > 0 else 0
-            
-            await query.edit_message_text(
-                f"📈 ATUALIZAR PROGRESSO\n\n"
-                f"🎯 **Objetivo:** {selected_goal['descricao']}\n"
-                f"💰 **Meta:** R$ {valor_meta:,.2f}\n"
-                f"📊 **Progresso atual:** R$ {valor_atual:,.2f} ({progresso:.1f}%)\n\n"
-                f"💵 Digite o NOVO valor atual (ex.: 500,00):"
-            )
-            return UPDATE_GOAL_PROGRESS
-    
-    await query.edit_message_text("❌ Erro ao selecionar objetivo.")
-    return ConversationHandler.END
-
-async def update_goal_value_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Atualiza o valor do progresso do objetivo"""
-    try:
-        valor_text = update.message.text.replace(',', '.').strip()
-        novo_valor = float(valor_text)
-        goal_id = context.user_data.get('selected_goal_id')
-        
-        if not goal_id:
-            await update.message.reply_text("❌ Objetivo não encontrado.", reply_markup=objetivos_keyboard())
-            return ConversationHandler.END
-        
-        if novo_valor < 0:
-            await update.message.reply_text("❌ O valor não pode ser negativo. Digite novamente:")
-            return UPDATE_GOAL_PROGRESS
-        
-        success = db.update_goal_progress(goal_id, novo_valor)
-        
-        if success:
-            # Buscar informações atualizadas
-            user_id = update.effective_user.id
-            goals = db.get_goals(user_id)
-            updated_goal = None
-            
-            for goal in goals:
-                if goal['id'] == goal_id:
-                    updated_goal = goal
-                    break
-            
-            if updated_goal:
-                progresso = (updated_goal['valor_atual'] / updated_goal['valor_meta']) * 100 if updated_goal['valor_meta'] > 0 else 0
-                
-                if updated_goal['concluido']:
-                    mensagem = f"🎉 **OBJETIVO CONCLUÍDO!** 🎉\n\n"
-                    mensagem += f"✅ {updated_goal['descricao']}\n"
-                    mensagem += f"💰 Meta: R$ {updated_goal['valor_meta']:,.2f}\n"
-                    mensagem += f"📈 Progresso: 100%\n\n"
-                    mensagem += "Parabéns! 🎊"
-                else:
-                    mensagem = f"✅ PROGRESSO ATUALIZADO!\n\n"
-                    mensagem += f"🎯 {updated_goal['descricao']}\n"
-                    mensagem += f"💰 Meta: R$ {updated_goal['valor_meta']:,.2f}\n"
-                    mensagem += f"📊 Progresso: R$ {updated_goal['valor_atual']:,.2f} ({progresso:.1f}%)\n\n"
-                    mensagem += "Continue assim! 💪"
-                
-                await update.message.reply_text(mensagem, reply_markup=objetivos_keyboard())
-            else:
-                await update.message.reply_text("✅ Progresso atualizado!", reply_markup=objetivos_keyboard())
-        else:
-            await update.message.reply_text("❌ Erro ao atualizar progresso.", reply_markup=objetivos_keyboard())
-        
-        # Limpar dados temporários
-        context.user_data.pop('selected_goal_id', None)
-        return ConversationHandler.END
-        
-    except ValueError:
-        await update.message.reply_text("❌ Valor inválido! Digite um número (ex.: 500,00)")
-        return UPDATE_GOAL_PROGRESS
-
-async def delete_goal_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Inicia o processo de exclusão de um objetivo"""
-    user_id = update.effective_user.id
-    goals = db.get_goals(user_id)
-    
-    if not goals:
-        await update.message.reply_text(
-            "❌ Você não tem objetivos cadastrados.",
-            reply_markup=objetivos_keyboard()
-        )
-        return ConversationHandler.END
-    
-    # Criar keyboard inline com objetivos
-    keyboard = []
-    for goal in goals:
-        progresso = (goal['valor_atual'] / goal['valor_meta']) * 100 if goal['valor_meta'] > 0 else 0
-        status = "✅ " if goal['concluido'] else "📊 "
-        button_text = f"{status}{goal['descricao']} - {progresso:.1f}%"
-        keyboard.append([InlineKeyboardButton(button_text, callback_data=f"delete_goal_{goal['id']}")])
-    
-    keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data="delete_goal_cancel")])
-    
-    await update.message.reply_text(
-        "🗑️ EXCLUIR OBJETIVO\n\nSelecione o objetivo que deseja excluir:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    return SELECT_GOAL_DELETE
-
-async def handle_goal_delete_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Processa a seleção de um objetivo para exclusão"""
-    query = update.callback_query
-    await query.answer()
-    
-    data = query.data
-    
-    if data == "delete_goal_cancel":
-        await query.edit_message_text("❌ Operação cancelada.")
-        await context.bot.send_message(
-            query.from_user.id,
-            "🎯 OBJETIVOS",
-            reply_markup=objetivos_keyboard()
-        )
-        return ConversationHandler.END
-    
-    if data.startswith("delete_goal_"):
-        goal_id = int(data.split('_')[2])
-        context.user_data['goal_to_delete_id'] = goal_id
-        
-        # Buscar informações do objetivo
-        user_id = query.from_user.id
-        goals = db.get_goals(user_id)
-        selected_goal = None
-        
-        for goal in goals:
-            if goal['id'] == goal_id:
-                selected_goal = goal
-                break
-        
-        if selected_goal:
-            # CORREÇÃO: Garantir que os valores sejam números
-            valor_meta = float(selected_goal['valor_meta']) if selected_goal['valor_meta'] else 0
-            valor_atual = float(selected_goal['valor_atual']) if selected_goal['valor_atual'] else 0
-            progresso = (valor_atual / valor_meta * 100) if valor_meta > 0 else 0
-            status = "CONCLUÍDO" if selected_goal['concluido'] else "EM ANDAMENTO"
-            
-            keyboard = [
-                [
-                    InlineKeyboardButton("✅ SIM, Excluir", callback_data=f"confirm_delete_{goal_id}"),
-                    InlineKeyboardButton("❌ NÃO, Cancelar", callback_data="confirm_delete_cancel")
-                ]
-            ]
-            
-            await query.edit_message_text(
-                f"🚨 CONFIRMAR EXCLUSÃO\n\n"
-                f"🗑️ **Objetivo:** {selected_goal['descricao']}\n"
-                f"💰 **Meta:** R$ {valor_meta:,.2f}\n"
-                f"📊 **Progresso:** R$ {valor_atual:,.2f} ({progresso:.1f}%)\n"
-                f"📈 **Status:** {status}\n\n"
-                f"Tem certeza que deseja EXCLUIR este objetivo?",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-            return CONFIRM_DELETE_GOAL
-    
-    await query.edit_message_text("❌ Erro ao selecionar objetivo.")
-    return ConversationHandler.END
-
-async def handle_confirm_delete_goal(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Confirma e executa a exclusão do objetivo"""
-    query = update.callback_query
-    await query.answer()
-    
-    data = query.data
-    
-    if data == "confirm_delete_cancel":
-        await query.edit_message_text("✅ Exclusão cancelada.")
-        await context.bot.send_message(
-            query.from_user.id,
-            "🎯 OBJETIVOS",
-            reply_markup=objetivos_keyboard()
-        )
-        return ConversationHandler.END
-    
-    if data.startswith("confirm_delete_"):
-        goal_id = int(data.split('_')[2])
-        
-        # Buscar informações antes de excluir para mostrar na mensagem
-        user_id = query.from_user.id
-        goals = db.get_goals(user_id)
-        goal_to_delete = None
-        
-        for goal in goals:
-            if goal['id'] == goal_id:
-                goal_to_delete = goal
-                break
-        
-        success = db.delete_goal(goal_id)
-        
-        if success:
-            if goal_to_delete:
-                await query.edit_message_text(
-                    f"✅ OBJETIVO EXCLUÍDO\n\n"
-                    f"🗑️ **{goal_to_delete['descricao']}**\n"
-                    f"💰 Meta: R$ {goal_to_delete['valor_meta']:,.2f}\n\n"
-                    f"Objetivo removido com sucesso."
-                )
-            else:
-                await query.edit_message_text("✅ Objetivo excluído com sucesso.")
-        else:
-            await query.edit_message_text("❌ Erro ao excluir objetivo.")
-        
-        # Limpar dados temporários
-        context.user_data.pop('goal_to_delete_id', None)
-        
-        await context.bot.send_message(
-            query.from_user.id,
-            "🎯 OBJETIVOS",
-            reply_markup=objetivos_keyboard()
-        )
-    
-    return ConversationHandler.END
-
-async def meus_objetivos_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Mostra todos os objetivos do usuário"""
-    user_id = update.effective_user.id
-    goals = db.get_goals(user_id)
-    
-    if not goals:
-        await update.message.reply_text(
-            "📝 Você ainda não tem objetivos cadastrados.\n\n"
-            "Use '🎯 Adicionar Objetivo' para criar seu primeiro objetivo!",
-            reply_markup=objetivos_keyboard()
-        )
-        return ConversationHandler.END
-    
-    response = "🎯 **MEUS OBJETIVOS**\n\n"
-    
-    objetivos_concluidos = 0
-    for i, goal in enumerate(goals, 1):
-        # CORREÇÃO: Garantir que os valores sejam números
-        valor_meta = float(goal['valor_meta']) if goal['valor_meta'] else 0
-        valor_atual = float(goal['valor_atual']) if goal['valor_atual'] else 0
-        progresso = (valor_atual / valor_meta * 100) if valor_meta > 0 else 0
-        status = "✅ CONCLUÍDO" if goal['concluido'] else f"📊 {progresso:.1f}%"
-        emoji = "✅" if goal['concluido'] else "🎯"
-        
-        if goal['concluido']:
-            objetivos_concluidos += 1
-        
-        response += f"{emoji} **{goal['descricao']}**\n"
-        response += f"   💰 Meta: R$ {valor_meta:,.2f}\n"
-        response += f"   📈 Progresso: R$ {valor_atual:,.2f}\n"
-        response += f"   🏷️ Status: {status}\n"
-        
-        if not goal['concluido'] and valor_meta > 0:
-            bar_length = 10
-            filled_length = int(bar_length * progresso / 100)
-            bar = '🟩' * filled_length + '⬜' * (bar_length - filled_length)
-            response += f"   {bar} {progresso:.1f}%\n"
-        
-        response += "\n"
-    
-    # Adicionar resumo
-    response += f"📊 **Resumo:** {objetivos_concluidos}/{len(goals)} objetivos concluídos\n\n"
-    response += "💪 Continue trabalhando em suas metas!"
-    
-    await update.message.reply_text(response, reply_markup=objetivos_keyboard())
-    return ConversationHandler.END
-
-# ========== CONFIGURAÇÕES ==========
-async def config_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "⚙️ CONFIGURAÇÕES\n\nGerencie seu perfil:",
-        reply_markup=config_keyboard()
-    )
-    return ConversationHandler.END
-
-async def edit_profile_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user_data = db.get_user_data(user_id)
-    
-    if not user_data:
-        await update.message.reply_text("❌ Erro: Dados do usuário não encontrados.", reply_markup=config_keyboard())
-        return ConversationHandler.END
-        
-    await update.message.reply_text(
-        f"✏️ EDITAR PERFIL\n\nNome atual: {user_data['nickname']}\n\nDigite o novo nome:",
-        reply_markup=ReplyKeyboardRemove()
-    )
-    return EDIT_NAME
-
-async def edit_name_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    new_name = update.message.text.strip()
-    user_id = update.effective_user.id
-    
-    if not new_name:
-        await update.message.reply_text("❌ Nome inválido. Digite um nome válido:")
-        return EDIT_NAME
-    
-    if len(new_name) < 2:
-        await update.message.reply_text("❌ Nome muito curto. Digite um nome com pelo menos 2 caracteres:")
-        return EDIT_NAME
-    
-    if len(new_name) > 50:
-        await update.message.reply_text("❌ Nome muito longo. Digite um nome com até 50 caracteres:")
-        return EDIT_NAME
-    
-    # Usar função específica para atualizar nome
-    success = db.update_user_name(user_id, new_name)
-    
-    if success:
-        await update.message.reply_text(
-            f"✅ Nome alterado para: {new_name}\n\n"
-            f"Seu perfil foi atualizado com sucesso!",
-            reply_markup=config_keyboard()
-        )
-    else:
-        await update.message.reply_text(
-            "❌ Erro ao alterar nome.\n"
-            "Tente novamente ou entre em contato com o suporte.",
-            reply_markup=config_keyboard()
-        )
-    
-    return ConversationHandler.END
-
-async def edit_salary_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user_data = db.get_user_data(user_id)
-    
-    if not user_data:
-        await update.message.reply_text("❌ Erro: Dados do usuário não encontrados.", reply_markup=config_keyboard())
-        return ConversationHandler.END
-        
-    await update.message.reply_text(
-        f"💰 ALTERAR SALÁRIO\n\n"
-        f"Salário atual: R$ {user_data['salario_liquido']:,.2f}\n\n"
-        f"Digite o novo valor do seu salário líquido mensal:\n"
-        f"(ex: 2500,00 ou 3500.50)",
-        reply_markup=ReplyKeyboardRemove()
-    )
-    return EDIT_SALARY
-
-async def edit_salary_process_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        salary_text = update.message.text.replace(',', '.').strip()
-        new_salary = float(salary_text)
-        user_id = update.effective_user.id
-        
-        if new_salary <= 0:
-            await update.message.reply_text("❌ O valor deve ser maior que zero. Digite novamente:")
-            return EDIT_SALARY
-        
-        if new_salary > 1000000:  # Limite razoável de 1 milhão
-            await update.message.reply_text("❌ Valor muito alto. Digite um valor válido:")
-            return EDIT_SALARY
-        
-        success = db.update_user_salary(user_id, new_salary)
-        
-        if success:
-            await update.message.reply_text(
-                f"✅ Salário alterado para: R$ {new_salary:,.2f}\n\n"
-                f"Seu salário foi atualizado com sucesso!\n"
-                f"Isso afetará suas análises financeiras.",
-                reply_markup=config_keyboard()
-            )
-        else:
-            await update.message.reply_text(
-                "❌ Erro ao alterar salário.\n"
-                "Tente novamente ou entre em contato com o suporte.",
-                reply_markup=config_keyboard()
-            )
-        
-        return ConversationHandler.END
-        
-    except ValueError:
-        await update.message.reply_text(
-            "❌ Valor inválido!\n\n"
-            "Digite um número válido:\n"
-            "• Ex: 2500,00\n"
-            "• Ex: 3500.50\n"
-            "• Ex: 1500"
-        )
-        return EDIT_SALARY
-
-async def edit_salary_select_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Processa a seleção do salário para edição"""
-    query = update.callback_query
-    await query.answer()
-    
-    data = query.data
-    
-    if data == "cancel_edit_salary":
-        await query.edit_message_text("❌ Operação cancelada.")
-        await context.bot.send_message(
-            query.from_user.id,
-            "💰 GERENCIAR SALÁRIOS",
-            reply_markup=gastos_keyboard()
-        )
-        return ConversationHandler.END
-    
-    if data.startswith("edit_salary_"):
-        salary_id = int(data.split('_')[2])
-        context.user_data['selected_salary_id'] = salary_id
-        
-        # Buscar informações do salário
-        user_id = query.from_user.id
-        salaries = db.get_salaries(user_id)
-        selected_salary = None
-        
-        for salary in salaries:
-            if salary['id'] == salary_id:
-                selected_salary = salary
-                break
-        
-        if selected_salary:
-            # Criar opções baseadas no tipo de salário
-            keyboard = []
-            
-            if selected_salary['principal']:
-                keyboard.append([InlineKeyboardButton("✏️ Renomear Origem", callback_data="edit_origin")])
-                keyboard.append([InlineKeyboardButton("💰 Alterar Valor", callback_data="edit_value")])
-            else:
-                keyboard.append([InlineKeyboardButton("✏️ Renomear Origem", callback_data="edit_origin")])
-                keyboard.append([InlineKeyboardButton("💰 Alterar Valor", callback_data="edit_value")])
-                keyboard.append([InlineKeyboardButton("🎯 Tornar Principal", callback_data="make_principal")])
-                keyboard.append([InlineKeyboardButton("🗑️ Excluir Salário", callback_data="delete_salary")])
-            
-            keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data="cancel_action")])
-            
-            principal_text = " (PRINCIPAL)" if selected_salary['principal'] else ""
-            
-            await query.edit_message_text(
-                f"✏️ EDITAR SALÁRIO\n\n"
-                f"📝 Origem: {selected_salary['origem']}{principal_text}\n"
-                f"💰 Valor: R$ {selected_salary['valor']:,.2f}\n\n"
-                f"Escolha uma ação:",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-            return EDIT_SALARY_ACTION
-    
-    await query.edit_message_text("❌ Erro ao selecionar salário.")
-    return ConversationHandler.END
-
-async def edit_salary_action_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Processa a ação selecionada para o salário"""
-    query = update.callback_query
-    await query.answer()
-    
-    data = query.data
-    salary_id = context.user_data.get('selected_salary_id')
-    
-    if data == "cancel_action":
-        await query.edit_message_text("❌ Operação cancelada.")
-        await context.bot.send_message(
-            query.from_user.id,
-            "💰 GERENCIAR SALÁRIOS",
-            reply_markup=gastos_keyboard()
-        )
-        return ConversationHandler.END
-    
-    if data == "edit_origin":
-        await query.edit_message_text(
-            "✏️ RENOMEAR ORIGEM\n\n"
-            "Digite o novo nome para a origem deste salário:"
-        )
-        return EDIT_SALARY_ORIGIN
-    
-    elif data == "edit_value":
-        await query.edit_message_text(
-            "💰 ALTERAR VALOR\n\n"
-            "Digite o novo valor para este salário:\n"
-            "(Ex: 3000,00)"
-        )
-        return EDIT_SALARY_VALUE
-    
-    elif data == "make_principal":
-        user_id = query.from_user.id
-        success = db.set_principal_salary(salary_id, user_id)
-        
-        if success:
-            await query.edit_message_text(
-                "✅ SALÁRIO DEFINIDO COMO PRINCIPAL!\n\n"
-                "Este salário agora é seu salário principal.",
-                reply_markup=gastos_keyboard()
-            )
-        else:
-            await query.edit_message_text(
-                "❌ Erro ao definir salário principal.",
-                reply_markup=gastos_keyboard()
-            )
-        return ConversationHandler.END
-    
-    elif data == "delete_salary":
-        success = db.delete_salary(salary_id)
-        
-        if success:
-            await query.edit_message_text(
-                "✅ SALÁRIO EXCLUÍDO!\n\n"
-                "O salário foi removido com sucesso.",
-                reply_markup=gastos_keyboard()
-            )
-        else:
-            await query.edit_message_text(
-                "❌ Não é possível excluir o salário principal.\n"
-                "Apenas salários extras podem ser excluídos.",
-                reply_markup=gastos_keyboard()
-            )
-        return ConversationHandler.END
-    
-    return ConversationHandler.END
-
-async def edit_salary_origin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Processa a edição da origem do salário"""
-    new_origin = update.message.text.strip()
-    salary_id = context.user_data.get('selected_salary_id')
-    
-    if not new_origin:
-        await update.message.reply_text("❌ Origem inválida. Digite novamente:")
-        return EDIT_SALARY_ORIGIN
-    
-    success = db.update_salary(salary_id, origem=new_origin)
-    
-    if success:
-        await update.message.reply_text(
-            f"✅ ORIGEM ALTERADA!\n\n"
-            f"Novo nome: {new_origin}",
-            reply_markup=gastos_keyboard()
-        )
-    else:
-        await update.message.reply_text(
-            "❌ Erro ao alterar origem.",
-            reply_markup=gastos_keyboard()
-        )
-    
-    # Limpar dados temporários
-    context.user_data.clear()
-    return ConversationHandler.END
-
-async def edit_salary_value_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Processa a edição do valor do salário"""
-    try:
-        valor_text = update.message.text.replace(',', '.').strip()
-        new_value = float(valor_text)
-        salary_id = context.user_data.get('selected_salary_id')
-        
-        if new_value <= 0:
-            await update.message.reply_text("❌ O valor deve ser maior que zero. Digite novamente:")
-            return EDIT_SALARY_VALUE
-        
-        success = db.update_salary(salary_id, valor=new_value)
-        
-        if success:
-            await update.message.reply_text(
-                f"✅ VALOR ALTERADO!\n\n"
-                f"Novo valor: R$ {new_value:,.2f}",
-                reply_markup=gastos_keyboard()
-            )
-        else:
-            await update.message.reply_text(
-                "❌ Erro ao alterar valor.",
-                reply_markup=gastos_keyboard()
-            )
-        
-        # Limpar dados temporários
-        context.user_data.clear()
-        return ConversationHandler.END
-        
-    except ValueError:
-        await update.message.reply_text("❌ Valor inválido! Digite um número (ex: 3000,00)")
-        return EDIT_SALARY_VALUE
-
-# ========== HANDLERS PARA RENDAS EXTRAS ==========
-
-async def renda_extra_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler para gerenciar rendas extras - VERSÃO COMPLETA"""
-    await update.message.reply_text(
-        "💵 GERENCIAR RENDAS EXTRAS\n\n"
-        "Escolha uma opção:",
-        reply_markup=ReplyKeyboardMarkup([
-            ['💵 Adicionar Renda Extra', '✏️ Alterar Rendas Extras'],
-            ['📊 Consultar Rendas Extras', '🏠 Voltar ao Menu']
-        ], resize_keyboard=True)
-    )
-    return ConversationHandler.END
-
-async def add_extra_income_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Inicia o processo de adicionar renda extra"""
-    await update.message.reply_text(
-        "💵 ADICIONAR RENDA EXTRA\n\n"
-        "📝 Qual a fonte/origem desta renda extra?\n"
-        "(Ex: Freelance, Bico, Investimentos, etc.)",
-        reply_markup=ReplyKeyboardRemove()
-    )
-    return ADD_EXTRA_INCOME_ORIGIN
-
-async def add_extra_income_origin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    origem = update.message.text.strip()
-    if not origem:
-        await update.message.reply_text("❌ Por favor, digite uma origem válida.")
-        return ADD_EXTRA_INCOME_ORIGIN
-    
-    context.user_data['extra_income_origin'] = origem
-    await update.message.reply_text(
-        f"💰 Qual o valor da renda extra de {origem}?\n"
-        f"(Ex: 500,00)",
-        reply_markup=ReplyKeyboardRemove()
-    )
-    return ADD_EXTRA_INCOME_VALUE
-
-async def add_extra_income_value_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        valor_text = update.message.text.replace(',', '.').strip()
-        valor = float(valor_text)
-        
-        if valor <= 0:
-            await update.message.reply_text("❌ O valor deve ser maior que zero.")
-            return ADD_EXTRA_INCOME_VALUE
-        
-        user_id = update.effective_user.id
-        origem = context.user_data['extra_income_origin']
-        
-        success = db.add_extra_income(user_id, origem, valor)
-        
-        if success:
-            message = (
-                f"✅ RENDA EXTRA ADICIONADA!\n\n"
-                f"📋 Detalhes:\n"
-                f"• 📝 Fonte/Origem: {origem}\n"
-                f"• 💰 Valor: R$ {valor:,.2f}\n"
-            )
-            
-            await update.message.reply_text(message, reply_markup=gastos_keyboard())
-        else:
-            await update.message.reply_text("❌ Erro ao adicionar renda extra.", reply_markup=gastos_keyboard())
-        
-        # Limpar dados temporários
-        context.user_data.clear()
-        return ConversationHandler.END
-        
-    except ValueError:
-        await update.message.reply_text("❌ Valor inválido! Digite um número (ex: 500,00)")
-        return ADD_EXTRA_INCOME_VALUE
-
-async def consultar_rendas_extras_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler para consultar todas as rendas extras"""
-    user_id = update.effective_user.id
-    
-    # Verificar se o usuário existe
-    if not db.user_exists(user_id):
-        await update.message.reply_text("❌ Use /start para se cadastrar primeiro.")
-        return ConversationHandler.END
-    
-    incomes = db.get_extra_incomes(user_id)
-    
-    if not incomes:
-        await update.message.reply_text(
-            "💵 NENHUMA RENDA EXTRA CADASTRADA\n\n"
-            "Você ainda não cadastrou nenhuma renda extra.\n"
-            "Use '💵 Adicionar Renda Extra' para cadastrar sua primeira renda extra.",
-            reply_markup=gastos_keyboard()
-        )
-        return ConversationHandler.END
-    
-    total = sum(income['valor'] for income in incomes)
-    
-    response = "💵 EXTRATO DE RENDAS EXTRAS\n\n"
-    
-    for i, income in enumerate(incomes, 1):
-        response += f"{i}. 📝 {income['origem']}\n"
-        response += f"   💰 R$ {income['valor']:,.2f}\n"
-        
-        # Formatar data de criação
-        try:
-            data_obj = datetime.datetime.strptime(income['data_criacao'], '%Y-%m-%d %H:%M:%S')
-            data_formatada = data_obj.strftime('%d/%m/%Y')
-            response += f"   📅 Cadastrado em: {data_formatada}\n"
-        except:
-            response += f"   📅 Cadastrado em: {income['data_criacao']}\n"
-        
-        response += "\n"
-    
-    response += f"💵 TOTAL DE RENDAS EXTRAS: R$ {total:,.2f}\n\n"
-    response += "💡 Use '✏️ Alterar Rendas Extras' para editar ou excluir."
-    
-    await update.message.reply_text(response, reply_markup=gastos_keyboard())
-    return ConversationHandler.END
-
-async def alterar_rendas_extras_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler para alterar rendas extras"""
-    user_id = update.effective_user.id
-    incomes = db.get_extra_incomes(user_id)
-    
-    if not incomes:
-        await update.message.reply_text(
-            "💵 NENHUMA RENDA EXTRA CADASTRADA\n\n"
-            "Você ainda não cadastrou nenhuma renda extra.\n"
-            "Use '💵 Adicionar Renda Extra' para cadastrar.",
-            reply_markup=gastos_keyboard()
-        )
-        return ConversationHandler.END
-    
-    # Criar keyboard com as rendas extras
-    keyboard = []
-    for income in incomes:
-        button_text = f"{income['origem']} - R$ {income['valor']:,.2f}"
-        keyboard.append([InlineKeyboardButton(button_text, callback_data=f"edit_extra_income_{income['id']}")])
-    
-    keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data="cancel_edit_extra_income")])
-    
-    await update.message.reply_text(
-        "✏️ ALTERAR RENDAS EXTRAS\n\n"
-        "Selecione a renda extra que deseja alterar:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    return EDIT_EXTRA_INCOME_SELECT
-
-async def edit_extra_income_select_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Processa a seleção da renda extra para edição"""
-    query = update.callback_query
-    await query.answer()
-    
-    data = query.data
-    
-    if data == "cancel_edit_extra_income":
-        await query.edit_message_text("❌ Operação cancelada.")
-        await context.bot.send_message(
-            query.from_user.id,
-            "💵 GERENCIAR RENDAS EXTRAS",
-            reply_markup=gastos_keyboard()
-        )
-        return ConversationHandler.END
-    
-    if data.startswith("edit_extra_income_"):
-        income_id = int(data.split('_')[3])
-        context.user_data['selected_extra_income_id'] = income_id
-        
-        # Buscar informações da renda extra
-        user_id = query.from_user.id
-        incomes = db.get_extra_incomes(user_id)
-        selected_income = None
-        
-        for income in incomes:
-            if income['id'] == income_id:
-                selected_income = income
-                break
-        
-        if selected_income:
-            # Criar opções
-            keyboard = [
-                [InlineKeyboardButton("✏️ Renomear Origem", callback_data="edit_extra_origin")],
-                [InlineKeyboardButton("💰 Alterar Valor", callback_data="edit_extra_value")],
-                [InlineKeyboardButton("🗑️ Excluir Renda Extra", callback_data="delete_extra_income")],
-                [InlineKeyboardButton("❌ Cancelar", callback_data="cancel_extra_action")]
-            ]
-            
-            await query.edit_message_text(
-                f"✏️ EDITAR RENDA EXTRA\n\n"
-                f"📝 Origem: {selected_income['origem']}\n"
-                f"💰 Valor: R$ {selected_income['valor']:,.2f}\n\n"
-                f"Escolha uma ação:",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-            return EDIT_EXTRA_INCOME_ACTION
-    
-    await query.edit_message_text("❌ Erro ao selecionar renda extra.")
-    return ConversationHandler.END
-
-async def edit_extra_income_action_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Processa a ação selecionada para a renda extra"""
-    query = update.callback_query
-    await query.answer()
-    
-    data = query.data
-    income_id = context.user_data.get('selected_extra_income_id')
-    
-    if data == "cancel_extra_action":
-        await query.edit_message_text("❌ Operação cancelada.")
-        await context.bot.send_message(
-            query.from_user.id,
-            "💵 GERENCIAR RENDAS EXTRAS",
-            reply_markup=gastos_keyboard()
-        )
-        return ConversationHandler.END
-    
-    if data == "edit_extra_origin":
-        await query.edit_message_text(
-            "✏️ RENOMEAR ORIGEM\n\n"
-            "Digite o novo nome para a origem desta renda extra:"
-        )
-        return EDIT_EXTRA_INCOME_ORIGIN
-    
-    elif data == "edit_extra_value":
-        await query.edit_message_text(
-            "💰 ALTERAR VALOR\n\n"
-            "Digite o novo valor para esta renda extra:\n"
-            "(Ex: 600,00)"
-        )
-        return EDIT_EXTRA_INCOME_VALUE
-    
-    elif data == "delete_extra_income":
-        success = db.delete_extra_income(income_id)
-        
-        if success:
-            await query.edit_message_text(
-                "✅ RENDA EXTRA EXCLUÍDA!\n\n"
-                "A renda extra foi removida com sucesso.",
-                reply_markup=gastos_keyboard()
-            )
-        else:
-            await query.edit_message_text(
-                "❌ Erro ao excluir renda extra.",
-                reply_markup=gastos_keyboard()
-            )
-        return ConversationHandler.END
-    
-    return ConversationHandler.END
-
-async def edit_extra_income_origin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Processa a edição da origem da renda extra"""
-    new_origin = update.message.text.strip()
-    income_id = context.user_data.get('selected_extra_income_id')
-    
-    if not new_origin:
-        await update.message.reply_text("❌ Origem inválida. Digite novamente:")
-        return EDIT_EXTRA_INCOME_ORIGIN
-    
-    success = db.update_extra_income(income_id, origem=new_origin)
-    
-    if success:
-        await update.message.reply_text(
-            f"✅ ORIGEM ALTERADA!\n\n"
-            f"Novo nome: {new_origin}",
-            reply_markup=gastos_keyboard()
-        )
-    else:
-        await update.message.reply_text(
-            "❌ Erro ao alterar origem.",
-            reply_markup=gastos_keyboard()
-        )
-    
-    # Limpar dados temporários
-    context.user_data.clear()
-    return ConversationHandler.END
-
-async def edit_extra_income_value_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Processa a edição do valor da renda extra"""
-    try:
-        valor_text = update.message.text.replace(',', '.').strip()
-        new_value = float(valor_text)
-        income_id = context.user_data.get('selected_extra_income_id')
-        
-        if new_value <= 0:
-            await update.message.reply_text("❌ O valor deve ser maior que zero. Digite novamente:")
-            return EDIT_EXTRA_INCOME_VALUE
-        
-        success = db.update_extra_income(income_id, valor=new_value)
-        
-        if success:
-            await update.message.reply_text(
-                f"✅ VALOR ALTERADO!\n\n"
-                f"Novo valor: R$ {new_value:,.2f}",
-                reply_markup=gastos_keyboard()
-            )
-        else:
-            await update.message.reply_text(
-                "❌ Erro ao alterar valor.",
-                reply_markup=gastos_keyboard()
-            )
-        
-        # Limpar dados temporários
-        context.user_data.clear()
-        return ConversationHandler.END
-        
-    except ValueError:
-        await update.message.reply_text("❌ Valor inválido! Digite um número (ex: 600,00)")
-        return EDIT_EXTRA_INCOME_VALUE
-        
-async def reset_data_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🔄 REDEFINIR DADOS\n\n"
-        "⚠️ **ATENÇÃO: Esta ação é IRREVERSÍVEL!**\n\n"
-        "Isso irá:\n"
-        "• ❌ Excluir TODOS os seus gastos registrados\n"
-        "• ❌ Remover TODOS os seus objetivos\n"
-        "• ❌ Limpar suas categorias personalizadas\n"
-        "• ✅ Manter apenas seu cadastro básico (nome e salário)\n\n"
-        "Tem certeza absoluta que deseja continuar?",
-        reply_markup=sim_nao_keyboard()
-    )
-    return CONFIRM_RESET
-
-async def confirm_reset_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    user_id = update.effective_user.id
-    
-    if 'SIM' in text:
-        success = db.reset_user_data(user_id)
-        
-        if success:
-            await update.message.reply_text(
-                "✅ **DADOS REDEFINIDOS COM SUCESSO!**\n\n"
-                "Todos os seus dados foram limpos:\n"
-                "• 📊 Gastos removidos\n"
-                "• 🎯 Objetivos excluídos\n"
-                "• 📂 Categorias personalizadas limpas\n\n"
-                "Seu cadastro básico foi mantido.\n"
-                "Você pode começar novamente! 🎉",
+                "🏠 MENU PRINCIPAL", 
                 reply_markup=main_keyboard()
             )
-        else:
-            await update.message.reply_text(
-                "❌ Erro ao redefinir dados.\n"
-                "Tente novamente ou entre em contato com o suporte.",
-                reply_markup=config_keyboard()
-            )
-    else:
-        await update.message.reply_text(
-            "✅ Operação cancelada.\n"
-            "Seus dados estão seguros.",
-            reply_markup=config_keyboard()
-        )
-    
-    return ConversationHandler.END
-
-# ========== HANDLER UNIVERSAL PARA VOLTAR ==========
+            
+    except Exception as e:
+        logger.error(f"Erro no callback de análise: {e}")
+        await query.edit_message_text("❌ Erro ao processar solicitação.", reply_markup=analise_detalhada_inline_keyboard())
+        
 async def voltar_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler universal para voltar ao menu principal"""
-    await update.message.reply_text(
-        "🏠 **MENU PRINCIPAL**\n\n"
-        "O que você gostaria de fazer?",
-        reply_markup=main_keyboard()
-    )
+    """Handler para voltar ao menu principal"""
+    await update.message.reply_text("🏠 MENU PRINCIPAL", reply_markup=main_keyboard())
     return ConversationHandler.END
-
-# ========== HANDLERS PARA SAÚDE FINANCEIRA ==========
-async def ver_metricas_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler para Ver Métricas Detalhadas"""
-    user_id = update.effective_user.id
-    user_data = db.get_user_data(user_id)
     
-    if not user_data:
-        await update.message.reply_text("❌ Você precisa se cadastrar primeiro. Use /start.")
-        return ConversationHandler.END
-    
-    expenses = db.get_monthly_expenses(user_id)
-    total_fixo = sum(sum(v.values()) for v in expenses['fixo'].values()) if expenses['fixo'] else 0
-    total_flexivel = sum(sum(v.values()) for v in expenses['flexivel'].values()) if expenses['flexivel'] else 0
-    total_geral = total_fixo + total_flexivel
-    
-    salario = user_data.get('salario_liquido', 0) or 0
-    saldo = salario - total_geral
-    percentual_gastos = (total_geral / salario * 100) if salario > 0 else 0
-    
-    # Análise de saúde financeira
-    if percentual_gastos <= 60:
-        status = "✅ SAUDÁVEL"
-        cor = "🟢"
-        recomendacao = "Parabéns! Suas finanças estão equilibradas."
-    elif percentual_gastos <= 85:
-        status = "⚠️ ATENÇÃO"
-        cor = "🟡"
-        recomendacao = "Revise seus gastos flexíveis."
-    else:
-        status = "🚨 CRÍTICO"
-        cor = "🔴"
-        recomendacao = "Priorize gastos essenciais e reveja seu orçamento."
-    
-    response = (
-        f"📊 **MÉTRICAS DETALHADAS - {user_data.get('nickname', 'Usuário')}**\n\n"
-        f"• 💵 **Salário Líquido:** R$ {salario:,.2f}\n"
-        f"• 🏠 **Gastos Fixos:** R$ {total_fixo:,.2f}\n"
-        f"• 🛍️ **Gastos Flexíveis:** R$ {total_flexivel:,.2f}\n"
-        f"• 💰 **Total Gasto:** R$ {total_geral:,.2f}\n"
-        f"• ⚖️ **Saldo Disponível:** R$ {saldo:,.2f}\n"
-        f"• 📈 **Comprometimento:** {percentual_gastos:.1f}%\n\n"
-        f"🏥 **SAÚDE FINANCEIRA:** {status} {cor}\n"
-        f"💡 **Recomendação:** {recomendacao}"
-    )
-    
-    await update.message.reply_text(response, reply_markup=saude_financeira_keyboard())
-    return ConversationHandler.END
-
-async def recomendacoes_ia_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler otimizado para Recomendações IA"""
-    user_id = update.effective_user.id
-    
-    if not db.user_exists(user_id):
-        await update.message.reply_text("❌ Você precisa se cadastrar primeiro. Use /start.")
-        return ConversationHandler.END
-    
-    # Mensagem imediata de confirmação
-    processing_msg = await update.message.reply_text("⚡ Analisando seus dados...")
-    
-    try:
-        # Timeout mais curto para a operação
-        recomendacoes = await asyncio.wait_for(
-            coach.finance_coach.get_personalized_recommendations(user_id),
-            timeout=10.0  # 10 segundos de timeout
-        )
-        
-        response = (
-            f"🧠 **RECOMENDAÇÕES PERSONALIZADAS**\n\n"
-            f"{recomendacoes}\n\n"
-            f"💡 *Baseado na sua situação financeira atual*"
-        )
-        
-        await processing_msg.edit_text(response)
-        
-    except asyncio.TimeoutError:
-        await processing_msg.edit_text(
-            "⚡ **RECOMENDAÇÕES RÁPIDAS**\n\n"
-            "• 📊 **Controle Orçamentário**: Acompanhe receitas e despesas\n"
-            "• 💰 **Reserva de Emergência**: Priorize 3-6 meses de gastos\n"
-            "• 🎯 **Metas Claras**: Defina objetivos específicos\n"
-            "• 📱 **Automatize Economias**: Transfira automaticamente para poupança\n"
-            "• 🔍 **Revise Assinaturas**: Cancele serviços não essenciais\n\n"
-            "💡 *Dicas práticas para melhorar suas finanças*",
-            reply_markup=saude_financeira_keyboard()
-        )
-    except Exception as e:
-        logger.error(f"Erro nas recomendações: {e}")
-        await processing_msg.edit_text(
-            "🎯 **DICAS FINANCEIRAS ESSENCIAIS**\n\n"
-            "1. **📊 Controle Orçamentário**: Acompanhe receitas e despesas\n"
-            "2. **💰 Reserva de Emergência**: Priorize 3-6 meses de gastos\n"
-            "3. **🎯 Metas Claras**: Defina objetivos específicos e prazos\n"
-            "4. **📚 Educação Contínua**: Aprenda sobre investimentos básicos\n"
-            "5. **💳 Evite Dívidas**: Fuja do cartão de crédito rotativo\n\n"
-            "💪 Comece por uma dessas ações hoje!",
-            reply_markup=saude_financeira_keyboard()
-        )
-    
-    return ConversationHandler.END
-
-async def analise_detalhada_ia_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler otimizado para Análise Detalhada com IA"""
-    user_id = update.effective_user.id
-    
-    if not db.user_exists(user_id):
-        await update.message.reply_text("❌ Você precisa se cadastrar primeiro. Use /start.")
-        return ConversationHandler.END
-    
-    processing_msg = await update.message.reply_text("📊 Gerando análise...")
-    
-    try:
-        analise = await asyncio.wait_for(
-            coach.finance_coach.get_detailed_analysis(user_id),
-            timeout=12.0  # 12 segundos para análise
-        )
-        
-        response = (
-            f"📈 **ANÁLISE FINANCEIRA DETALHADA**\n\n"
-            f"{analise}\n\n"
-            f"💎 *Visão geral da sua situação financeira*"
-        )
-        
-        await processing_msg.edit_text(response)
-        
-    except asyncio.TimeoutError:
-        # Análise local rápida como fallback
-        user_data = db.get_user_data(user_id)
-        expenses = db.get_monthly_expenses(user_id)
-        
-        total_fixo = sum(sum(v.values()) for v in expenses['fixo'].values()) if expenses['fixo'] else 0
-        total_flexivel = sum(sum(v.values()) for v in expenses['flexivel'].values()) if expenses['flexivel'] else 0
-        total_geral = total_fixo + total_flexivel
-        salario = user_data.get('salario_liquido', 0)
-        percentual = (total_geral / salario * 100) if salario > 0 else 0
-        
-        if percentual <= 60:
-            situacao = "🟢 SAUDÁVEL"
-            acao = "Mantenha o controle e pense em investimentos"
-        elif percentual <= 85:
-            situacao = "🟡 ATENÇÃO"
-            acao = "Revise gastos flexíveis e estabeleça limites"
-        else:
-            situacao = "🔴 CRÍTICO"
-            acao = "Priorize redução de despesas essenciais"
-        
-        # Calcular distribuição
-        if total_geral > 0:
-            proporcao_fixo = (total_fixo / total_geral) * 100
-            proporcao_flex = (total_flexivel / total_geral) * 100
-        else:
-            proporcao_fixo = proporcao_flex = 0
-        
-        await processing_msg.edit_text(
-            f"📊 **ANÁLISE RÁPIDA DO MÊS**\n\n"
-            f"• 💵 **Renda Mensal:** R$ {salario:,.2f}\n"
-            f"• 🏠 **Gastos Fixos:** R$ {total_fixo:,.2f} ({proporcao_fixo:.1f}%)\n"
-            f"• 🛍️ **Gastos Flexíveis:** R$ {total_flexivel:,.2f} ({proporcao_flex:.1f}%)\n"
-            f"• 💰 **Total Gasto:** R$ {total_geral:,.2f}\n"
-            f"• ⚖️ **Saldo:** R$ {salario - total_geral:,.2f}\n"
-            f"• 📈 **Comprometido:** {percentual:.1f}%\n\n"
-            f"🏥 **Situação**: {situacao}\n"
-            f"🎯 **Ação Recomendada**: {acao}",
-            reply_markup=saude_financeira_keyboard()
-        )
-    except Exception as e:
-        logger.error(f"Erro na análise: {e}")
-        await processing_msg.edit_text(
-            "📈 **ANÁLISE BÁSICA**\n\n"
-            "Para uma análise completa:\n"
-            "• 📝 **Registre gastos** regularmente\n"
-            "• 💰 **Mantenha salário** atualizado\n"
-            "• 🏷️ **Use categorias** específicas\n"
-            "• 📊 **Consulte resumo** mensalmente\n\n"
-            "💡 **Dica**: Quanto mais dados, melhor a análise!",
-            reply_markup=saude_financeira_keyboard()
-        )
-    
-    return ConversationHandler.END
-
-# ========== HANDLERS PARA EDUCAÇÃO FINANCEIRA ==========
-async def educacao_financeira_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler para o menu de Educação Financeira"""
-    await update.message.reply_text(
-        "🎓 **EDUCAÇÃO FINANCEIRA**\n\n"
-        "Aqui você pode aprender e melhorar seus conhecimentos:\n\n"
-        "• 💡 **Dica do Dia** - Conselhos práticos e atualizados\n"
-        "• 📚 **Glossário** - Conceitos financeiros explicados de forma simples\n"
-        "• 🎓 **Módulos Educativos** - Cursos estruturados passo a passo\n\n"
-        "✨ **Escolha uma opção para começar sua jornada de aprendizado!**",
-        reply_markup=educacao_keyboard()
-    )
-    return ConversationHandler.END
-
-async def dica_do_dia_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler para Dica do Dia"""
-    dicas = [
-        "💡 **Dica do Dia**: Estabeleça um orçamento mensal e acompanhe seus gastos regularmente!",
-        "💡 **Dica do Dia**: Priorize a criação de uma reserva de emergência com 3-6 meses de despesas essenciais.",
-        "💡 **Dica do Dia**: Evite dívidas com juros altos, como cartão de crédito rotativo e cheque especial.",
-        "💡 **Dica do Dia**: Invista em educação financeira - é o melhor investimento que você pode fazer!",
-        "💡 **Dica do Dia**: Automatize suas economias para não correr o risco de gastar o que deveria guardar.",
-        "💡 **Dica do Dia**: Revise suas assinaturas e serviços mensalmente - cancele os não essenciais.",
-        "💡 **Dica do Dia**: Estabeleça metas financeiras claras de curto, médio e longo prazo.",
-        "💡 **Dica do Dia**: Aprenda sobre investimentos que se adequem ao seu perfil de risco e objetivos.",
-        "💡 **Dica do Dia**: Compare preços antes de compras importantes - pequenas economias fazem diferença!",
-        "💡 **Dica do Dia**: Separe pelo menos 10% da sua renda para investimentos antes de gastar com outras coisas.",
-    ]
-    
-    import random
-    dica = random.choice(dicas)
-    
-    await update.message.reply_text(
-        f"{dica}\n\n"
-        f"💭 **Reflexão**: Pequenas ações financeiras consistentes geram grandes resultados no longo prazo!",
-        reply_markup=educacao_keyboard()
-    )
-    return ConversationHandler.END
-
-async def glossario_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler para Glossário Financeiro"""
-    glossario = {
-        "💰 Orçamento": "Planejamento de como você vai gastar seu dinheiro, considerando receitas e despesas.",
-        "🛡️ Reserva de Emergência": "Valor guardado para situações imprevistas como desemprego ou problemas de saúde.",
-        "📈 Juros Compostos": "Juros calculados sobre o valor inicial e também sobre os juros acumulados - o 'milagre' dos investimentos.",
-        "🏦 CDB": "Certificado de Depósito Bancário - um tipo de investimento de renda fixa.",
-        "🇧🇷 Tesouro Direto": "Programa do governo federal para venda de títulos públicos para pessoas físicas.",
-        "📊 Ações": "Pedaços de uma empresa que são vendidos na bolsa de valores.",
-        "💸 Dividendos": "Parte do lucro de uma empresa que é distribuída aos acionistas.",
-        "📉 Inflação": "Aumento geral dos preços de bens e serviços ao longo do tempo.",
-        "🏛️ Taxa Selic": "Taxa básica de juros da economia brasileira, definida pelo Banco Central.",
-        "⚖️ Asset Allocation": "Distribuição do patrimônio em diferentes classes de investimentos.",
-        "💳 Crédito Consignado": "Empréstimo com desconto direto na folha de pagamento, com juros menores.",
-        "🏠 FGTS": "Fundo de Garantia do Tempo de Serviço - reserva financeira do trabalhador.",
-        "👵 Previdência Privada": "Plano de aposentadoria complementar à previdência social.",
-        "📋 Fluxo de Caixa": "Controle de entradas e saídas de dinheiro em um período.",
-        "🎯 Meta Financeira": "Objetivo específico com valor e prazo definidos para alcançar algo."
-    }
-    
-    # Dividir o glossário em partes para não exceder o limite do Telegram
-    response = "📚 **GLOSSÁRIO FINANCEIRO**\n\n"
-    response += "📖 **Conceitos Essenciais:**\n\n"
-    
-    items = list(glossario.items())
-    for i, (termo, definicao) in enumerate(items[:8]):  # Primeira parte
-        response += f"• **{termo}**: {definicao}\n\n"
-    
-    await update.message.reply_text(response, reply_markup=educacao_keyboard())
-    
-    # Segunda parte do glossário
-    response2 = "📚 **GLOSSÁRIO FINANCEIRO**\n\n"
-    response2 += "📖 **Mais Conceitos Importantes:**\n\n"
-    
-    for i, (termo, definicao) in enumerate(items[8:], 1):
-        response2 += f"• **{termo}**: {definicao}\n\n"
-    
-    response2 += "💡 **Continue aprendendo! Conhecimento financeiro é liberdade.**"
-    
-    await update.message.reply_text(response2, reply_markup=educacao_keyboard())
-    return ConversationHandler.END
-
-async def modulos_educativos_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler para Módulos Educativos"""
-    modulos = [
-        {
-            "titulo": "📊 Fundamentos do Orçamento",
-            "conteudo": "**Aprenda a criar e manter um orçamento pessoal eficaz:**\n\n"
-                       "1. 📝 **Identifique suas receitas e despesas**\n"
-                       "2. 🏷️ **Classifique gastos essenciais e não-essenciais**\n"
-                       "3. 💰 **Estabeleça limites realistas**\n"
-                       "4. 🔄 **Acompanhe e ajuste regularmente**\n\n"
-                       "🎯 **Exercício prático**: Liste suas 5 maiores despesas do mês.\n\n"
-                       "💡 **Dica**: Use o app para registrar todos os gastos!"
-        },
-        {
-            "titulo": "💰 Como Criar sua Reserva de Emergência",
-            "conteudo": "**Guia passo a passo para construir sua segurança financeira:**\n\n"
-                       "• 🎯 **Quanto guardar**: 3-6 meses de despesas essenciais\n"
-                       "• 🏦 **Onde aplicar**: Fundos conservadores e de fácil acesso\n"
-                       "• ⚡ **Como priorizar**: Antes de pensar em outros investimentos\n"
-                       "• 🚨 **Quando usar**: Apenas em situações reais de emergência\n\n"
-                       "💪 **Meta**: Comece com 1 mês de despesas como primeiro objetivo.\n\n"
-                       "🛡️ **Segurança primeiro, depois crescimento!**"
-        },
-        {
-            "titulo": "🎯 Metas Financeiras Inteligentes",
-            "conteudo": "**A metodologia SMART para suas metas:**\n\n"
-                       "🎯 **S - Específica** (exatamente o que quer)\n"
-                       "📏 **M - Mensurável** (valores e prazos claros)\n"
-                       "🏆 **A - Atingível** (desafiadora mas realista)\n"
-                       "❤️ **R - Relevante** (alinhada com seus valores)\n"
-                       "⏰ **T - Temporal** (prazo definido)\n\n"
-                       "📝 **Exemplo prático**: \n'Vou economizar R$ 5.000 para entrada de um apartamento em 12 meses'\n\n"
-                       "✨ **Escreva sua meta SMART agora!**"
-        },
-        {
-            "titulo": "📈 Introdução aos Investimentos",
-            "conteudo": "**Primeiros passos no mundo dos investimentos:**\n\n"
-                       "• 🏦 **Renda Fixa vs Renda Variável**\n"
-                       "• 🥚 **Diversificação**: Não coloque todos os ovos na mesma cesta\n"
-                       "• 👤 **Perfil de Investidor**: Conservador, Moderado ou Arrojado\n"
-                       "• 📊 **Juros Compostos**: Seu maior aliado no longo prazo\n\n"
-                       "🛡️ **Princípio fundamental**: Só invista no que você entende.\n\n"
-                       "💡 **Comece pequeno e aprenda com o tempo!**"
-        }
-    ]
-    
-    # Criar keyboard inline com os módulos
-    keyboard = []
-    for i, modulo in enumerate(modulos, 1):
-        keyboard.append([InlineKeyboardButton(modulo["titulo"], callback_data=f"modulo_{i}")])
-    
-    keyboard.append([InlineKeyboardButton("🏠 Voltar ao Menu", callback_data="modulo_voltar")])
-    
-    await update.message.reply_text(
-        "🎓 **MÓDULOS EDUCATIVOS**\n\n"
-        "Escolha um módulo para aprender:\n\n"
-        "📚 **Cada módulo contém:**\n"
-        "• 📖 Conceitos fundamentais\n"
-        "• 💼 Exemplos práticos\n"
-        "• 🎯 Exercícios para aplicar\n"
-        "• 💡 Dicas de implementação\n\n"
-        "✨ **Aprenda no seu ritmo!**",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    return ConversationHandler.END
-
-async def handle_modulos_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler para callbacks dos módulos educativos"""
+async def cancel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cancela operação via callback"""
     query = update.callback_query
     await query.answer()
-    
-    data = query.data
-    
-    modulos = [
-        {
-            "titulo": "📊 Fundamentos do Orçamento",
-            "conteudo": "**Aprenda a criar e manter um orçamento pessoal eficaz:**\n\n"
-                       "1. 📝 **Identifique suas receitas e despesas**\n"
-                       "2. 🏷️ **Classifique gastos essenciais e não-essenciais**\n"
-                       "3. 💰 **Estabeleça limites realistas**\n"
-                       "4. 🔄 **Acompanhe e ajuste regularmente**\n\n"
-                       "🎯 **Exercício prático**: Liste suas 5 maiores despesas do mês.\n\n"
-                       "💡 **Dica**: Use o app para registrar todos os gastos!"
-        },
-        {
-            "titulo": "💰 Como Criar sua Reserva de Emergência",
-            "conteudo": "**Guia passo a passo para construir sua segurança financeira:**\n\n"
-                       "• 🎯 **Quanto guardar**: 3-6 meses de despesas essenciais\n"
-                       "• 🏦 **Onde aplicar**: Fundos conservadores e de fácil acesso\n"
-                       "• ⚡ **Como priorizar**: Antes de pensar em outros investimentos\n"
-                       "• 🚨 **Quando usar**: Apenas em situações reais de emergência\n\n"
-                       "💪 **Meta**: Comece com 1 mês de despesas como primeiro objetivo.\n\n"
-                       "🛡️ **Segurança primeiro, depois crescimento!**"
-        },
-        {
-            "titulo": "🎯 Metas Financeiras Inteligentes",
-            "conteudo": "**A metodologia SMART para suas metas:**\n\n"
-                       "🎯 **S - Específica** (exatamente o que quer)\n"
-                       "📏 **M - Mensurável** (valores e prazos claros)\n"
-                       "🏆 **A - Atingível** (desafiadora mas realista)\n"
-                       "❤️ **R - Relevante** (alinhada com seus valores)\n"
-                       "⏰ **T - Temporal** (prazo definido)\n\n"
-                       "📝 **Exemplo prático**: \n'Vou economizar R$ 5.000 para entrada de um apartamento em 12 meses'\n\n"
-                       "✨ **Escreva sua meta SMART agora!**"
-        },
-        {
-            "titulo": "📈 Introdução aos Investimentos",
-            "conteudo": "**Primeiros passos no mundo dos investimentos:**\n\n"
-                       "• 🏦 **Renda Fixa vs Renda Variável**\n"
-                       "• 🥚 **Diversificação**: Não coloque todos os ovos na mesma cesta\n"
-                       "• 👤 **Perfil de Investidor**: Conservador, Moderado ou Arrojado\n"
-                       "• 📊 **Juros Compostos**: Seu maior aliado no longo prazo\n\n"
-                       "🛡️ **Princípio fundamental**: Só invista no que você entende.\n\n"
-                       "💡 **Comece pequeno e aprenda com o tempo!**"
-        }
-    ]
-    
-    if data == "modulo_voltar":
-        await query.edit_message_text("🏠 Voltando ao Menu Principal")
-        await context.bot.send_message(
-            query.from_user.id,
-            "🎓 EDUCAÇÃO FINANCEIRA",
-            reply_markup=educacao_keyboard()
-        )
-        return ConversationHandler.END
-    
-    if data.startswith("modulo_"):
-        try:
-            modulo_index = int(data.split("_")[1]) - 1
-            if 0 <= modulo_index < len(modulos):
-                modulo = modulos[modulo_index]
-                
-                keyboard = [
-                    [InlineKeyboardButton("📚 Ver Outros Módulos", callback_data="modulos_lista")],
-                    [InlineKeyboardButton("🏠 Voltar ao Menu", callback_data="modulo_voltar")]
-                ]
-                
-                await query.edit_message_text(
-                    f"**{modulo['titulo']}**\n\n{modulo['conteudo']}",
-                    reply_markup=InlineKeyboardMarkup(keyboard),
-                    parse_mode='Markdown'
-                )
-        except (ValueError, IndexError):
-            await query.edit_message_text("❌ Erro ao carregar módulo. Tente novamente.")
-
-    elif data == "modulos_lista":
-        # Recriar a lista de módulos
-        keyboard = []
-        for i, modulo in enumerate(modulos, 1):
-            keyboard.append([InlineKeyboardButton(modulo["titulo"], callback_data=f"modulo_{i}")])
-        keyboard.append([InlineKeyboardButton("🏠 Voltar ao Menu", callback_data="modulo_voltar")])
-        
-        await query.edit_message_text(
-            "🎓 **MÓDULOS EDUCATIVOS**\n\nEscolha um módulo para aprender:\n\n"
-            "✨ **Aprenda no seu ritmo!**",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-    
-    return ConversationHandler.END
-
-# ========== HANDLERS DE MENU ==========
-async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    logger.info(f"📨 Mensagem recebida: {text}")
-    
-    if 'Voltar ao Menu' in text:
-        return await voltar_menu_handler(update, context)
-    elif 'Gastos / Rendas' in text:
-        return await adicionar_gastos_handler(update, context)
-    elif 'Meu Extrato' in text:
-        return await extrato_gastos_handler(update, context)
-    elif 'Saúde Financeira' in text:
-        return await saude_financeira_handler(update, context)
-    elif 'Educação Financeira' in text:
-        return await educacao_financeira_handler(update, context)
-    elif 'Objetivos' in text:
-        return await objetivos_handler(update, context)
-    elif 'Configurações' in text:
-        return await config_handler(update, context)
-    elif 'Ajuda' in text:
-        return await ajuda_handler(update, context)
-    
-    # HANDLERS PARA GASTOS E RENDAS
-    elif 'Gastos Fixos' in text:
-        context.user_data['user_id'] = update.effective_user.id
-        context.user_data['tipo_gasto'] = 'fixo'
-        await update.message.reply_text(
-            "🏦 CATEGORIAS DE GASTOS FIXOS\n\nSelecione a categoria:",
-            reply_markup=categorias_fixas_keyboard()
-        )
-        return CATEGORIA_FIXA
-    elif 'Gastos Flexíveis' in text:
-        context.user_data['user_id'] = update.effective_user.id
-        context.user_data['tipo_gasto'] = 'flexivel'
-        await update.message.reply_text(
-            "🛍️ CATEGORIAS DE GASTOS FLEXÍVEIS\n\nSelecione a categoria:",
-            reply_markup=categorias_flexiveis_keyboard()
-        )
-        return CATEGORIA_FLEXIVEL
-    elif 'Salário' in text:
-        return await salario_handler(update, context)
-    elif 'Renda extra' in text:
-        return await renda_extra_handler(update, context)
-    
-    # HANDLERS PARA SALÁRIO (submenu)
-    elif 'Definir Salário' in text or 'Alterar Salário' in text:
-        return await definir_salario_handler(update, context)
-    elif 'Ver Salário Atual' in text:
-        return await ver_salario_handler(update, context)
-    
-    # HANDLERS PARA SAÚDE FINANCEIRA
-    elif 'Ver Métricas Detalhadas' in text:
-        return await ver_metricas_handler(update, context)
-    elif 'Recomendações IA' in text:
-        return await recomendacoes_ia_handler(update, context)
-    elif 'Análise Detalhada com IA' in text:
-        return await analise_detalhada_ia_handler(update, context)
-    
-    # HANDLERS PARA OBJETIVOS
-    elif 'Adicionar Objetivo' in text:
-        return await add_goal_handler(update, context)
-    elif 'Atualizar Progresso' in text:
-        return await update_goal_progress_handler(update, context)
-    elif 'Excluir Objetivo' in text:
-        return await delete_goal_handler(update, context)
-    elif 'Meus Objetivos' in text:
-        return await meus_objetivos_handler(update, context)
-    
-    # HANDLERS PARA EDUCAÇÃO FINANCEIRA
-    elif 'Dica do Dia' in text:
-        return await dica_do_dia_handler(update, context)
-    elif 'Glossário' in text:
-        return await glossario_handler(update, context)
-    elif 'Módulos Educativos' in text:
-        return await modulos_educativos_handler(update, context)
-    
-    # HANDLERS PARA CONFIGURAÇÕES
-    elif 'Editar Perfil' in text:
-        return await edit_profile_handler(update, context)
-    elif 'Redefinir' in text:
-        return await reset_data_handler(update, context)
-        
-    # HANDLERS PARA SALÁRIO (submenu) - VERIFICAR ESTES
-    elif 'Adicionar Salário' in text:
-        logger.info("✅ Chamando add_salary_handler")
-        return await add_salary_handler(update, context)
-    # No main_menu_handler, verifique se tem este caso:
-    elif 'Consultar Salários' in text:
-        logger.info("📊 Consultar Salários selecionado")
-        return await consultar_salarios_handler(update, context)
-    elif 'Alterar Salários' in text:
-        logger.info("✅ Chamando alterar_salarios_handler")
-        return await alterar_salarios_handler(update, context)
-    
-    # No main_menu_handler, adicione estes casos:
-    elif 'Adicionar Renda Extra' in text:
-        return await add_extra_income_handler(update, context)
-    elif 'Consultar Rendas Extras' in text:
-        return await consultar_rendas_extras_handler(update, context)
-    elif 'Alterar Rendas Extras' in text:
-        return await alterar_rendas_extras_handler(update, context)
-        
-    else:
-        await update.message.reply_text(
-            "❌ Comando não reconhecido.\n\n"
-            "💡 Use os botões do menu ou digite /ajuda para ver todas as opções disponíveis.",
-            reply_markup=main_keyboard()
-        )
-    
-    return ConversationHandler.END
-
-async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🏠 **MENU PRINCIPAL**\n\n"
-        "Escolha uma opção para começar:",
+    await query.edit_message_text("❌ Operação cancelada.")
+    await context.bot.send_message(
+        query.from_user.id,
+        "🏠 MENU PRINCIPAL",
         reply_markup=main_keyboard()
     )
+    context.user_data.clear()
     return ConversationHandler.END
-
-async def ajuda_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    help_text = """
-🤖 **EDU - SEU ASSISTENTE FINANCEIRO PESSOAL**
-
-🎯 **PRINCIPAIS FUNCIONALIDADES:**
-
-🧮 **GASTOS E RENDAS**
-• 🏦 Gastos Fixos - Despesas regulares (aluguel, contas)
-• 🛍️ Gastos Flexíveis - Despesas variáveis (alimentação, lazer)
-• 💰 Salário - Definir e gerenciar seu salário
-• 💵 Renda extra - Rendas adicionais (em desenvolvimento)
-
-🧾 **MEU EXTRATO**
-• 📊 Visualizar todas as transações detalhadamente
-• 📈 Análise completa dos seus gastos
-
-📈 **SAÚDE FINANCEIRA**
-• 📊 Métricas Detalhadas - Indicadores financeiros
-• 🧠 Recomendações IA - Conselhos personalizados
-• 📈 Análise Detalhada - Visão completa da sua situação
-
-🎯 **METAS E OBJETIVOS**
-• Adicionar Objetivo - Defina novas metas
-• Atualizar Progresso - Acompanhe evolução
-• Meus Objetivos - Veja todas as metas
-• Excluir Objetivo - Remova objetivos
-
-🎓 **EDUCAÇÃO FINANCEIRA**
-• 💡 Dica do Dia - Conselhos práticos diários
-• 📚 Glossário - Conceitos explicados
-• 🎓 Módulos Educativos - Cursos estruturados
-
-⚙️ **CONFIGURAÇÕES**
-• ✏️ Editar Perfil - Alterar nome
-• 🔄 Redefinir - Limpar todos os dados
-
-📱 **COMANDOS RÁPIDOS:**
-/start - Iniciar o bot
-/menu - Mostrar menu principal
-/extrato - Ver extrato detalhado
-/ajuda - Mostrar esta ajuda
-
-💡 **DICAS IMPORTANTES:**
-• ✅ Registre TODOS os gastos para análise precisa
-• 🏷️ Use categorias específicas para melhor organização
-• 📊 Consulte a saúde financeira semanalmente
-• 🎯 Estabeleça metas realistas e alcançáveis
-• 🔄 Mantenha seu salário atualizado
-
-🌟 **Lembre-se:** Pequenas ações consistentes geram grandes resultados financeiros!
-    """
-    await update.message.reply_text(help_text, reply_markup=main_keyboard())
-    return ConversationHandler.END
-
-async def gastos_mes_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler para Gastos do Mês - Versão corrigida"""
-    await update.message.reply_text(
-        "📅 **SELECIONE O MÊS**\n\nEscolha o mês para ver as estatísticas:",
-        reply_markup=MonthYearCalendar.create_month_year_calendar()
-    )
-    return GASTOS_MES
-    
-# ========== UTILITÁRIOS ==========
-def parse_date_input(date_text: str):
-    if not isinstance(date_text, str):
-        return None
-        
-    s = date_text.strip().lower()
-    if s == 'hoje':
-        return datetime.datetime.now().strftime('%d/%m/%Y')
-        
-    cleaned = re.sub(r'[^\d/]', '', date_text.strip())
-    
-    if len(cleaned) == 8 and cleaned.isdigit():
-        day, month, year = cleaned[0:2], cleaned[2:4], cleaned[4:8]
-        candidate = f"{day}/{month}/{year}"
-        return candidate if validate_date(candidate) else None
-        
-    if len(cleaned) == 10 and cleaned.count('/') == 2:
-        parts = cleaned.split('/')
-        candidate = f"{int(parts[0]):02d}/{int(parts[1]):02d}/{parts[2]}"
-        return candidate if validate_date(candidate) else None
-        
-    return None
-
-def validate_date(date_str: str):
-    try:
-        d, m, y = map(int, date_str.split('/'))
-        datetime.datetime(y, m, d)
-        return True
-    except Exception:
-        return False
-
-# ========== HANDLERS PARA CONVERSATION ==========
-# Handlers que são apenas aliases para o conversation handler
-resumo_gastos_handler = resumo_gastos_handler
-
-# Cache simples em memória
-_user_data_cache = {}
-_cache_timeout = 300  # 5 minutos
-
-def get_cached_user_data(user_id):
-    """Obtém dados do usuário com cache"""
-    now = datetime.datetime.now().timestamp()
-    if user_id in _user_data_cache:
-        data, timestamp = _user_data_cache[user_id]
-        if now - timestamp < _cache_timeout:
-            return data
-    
-    # Se não está em cache ou expirou, busca no banco
-    data = db.get_user_data(user_id)
-    _user_data_cache[user_id] = (data, now)
-    return data
-
-def get_cached_monthly_expenses(user_id):
-    """Obtém gastos mensais com cache"""
-    now = datetime.datetime.now().timestamp()
-    cache_key = f"expenses_{user_id}"
-    
-    if cache_key in _user_data_cache:
-        data, timestamp = _user_data_cache[cache_key]
-        if now - timestamp < _cache_timeout:
-            return data
-    
-    data = db.get_monthly_expenses(user_id)
-    _user_data_cache[cache_key] = (data, now)
-    return data
