@@ -15,14 +15,22 @@ class Database:
         
     def get_connection(self):
         """Cria e retorna uma conexão com o banco de dados"""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            return conn
+        except Exception as e:
+            logger.error(f"❌ Erro ao conectar com banco de dados: {e}")
+            return None
 
     def init_db(self):
         """Inicializa o banco de dados com todas as tabelas necessárias"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                logger.error("❌ Não foi possível conectar ao banco de dados")
+                return False
+                
             cursor = conn.cursor()
             
             # Tabela de usuários
@@ -117,37 +125,58 @@ class Database:
         """Verifica se um usuário existe no banco de dados"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                return False
+                
             cursor = conn.cursor()
             cursor.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,))
             exists = cursor.fetchone() is not None
             conn.close()
             return exists
         except Exception as e:
-            logger.error(f"Erro ao verificar usuário: {e}")
+            logger.error(f"❌ Erro ao verificar usuário: {e}")
             return False
 
     def add_user(self, user_id: int, nickname: str, salario_liquido: float) -> bool:
         """Adiciona um novo usuário ao banco de dados"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                logger.error("❌ Não foi possível conectar ao banco para adicionar usuário")
+                return False
+                
             cursor = conn.cursor()
             data_criacao = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            cursor.execute(
-                "INSERT INTO users (user_id, nickname, salario_liquido, data_criacao) VALUES (?, ?, ?, ?)",
-                (user_id, nickname, salario_liquido, data_criacao)
-            )
+            
+            # Verificar se o usuário já existe (por segurança)
+            cursor.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,))
+            if cursor.fetchone():
+                logger.info(f"ℹ️ Usuário {user_id} já existe, atualizando dados...")
+                cursor.execute(
+                    "UPDATE users SET nickname = ?, salario_liquido = ? WHERE user_id = ?",
+                    (nickname, salario_liquido, user_id)
+                )
+            else:
+                cursor.execute(
+                    "INSERT INTO users (user_id, nickname, salario_liquido, data_criacao) VALUES (?, ?, ?, ?)",
+                    (user_id, nickname, salario_liquido, data_criacao)
+                )
+            
             conn.commit()
             conn.close()
-            logger.info(f"✅ Usuário {nickname} adicionado com sucesso!")
+            logger.info(f"✅ Usuário {nickname} (ID: {user_id}) salvo com sucesso!")
             return True
         except Exception as e:
-            logger.error(f"❌ Erro ao adicionar usuário: {e}")
+            logger.error(f"❌ Erro ao adicionar/atualizar usuário: {e}")
             return False
 
     def get_user_data(self, user_id: int) -> Optional[Dict]:
         """Obtém os dados de um usuário"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                return None
+                
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
             row = cursor.fetchone()
@@ -157,18 +186,27 @@ class Database:
                 return dict(row)
             return None
         except Exception as e:
-            logger.error(f"Erro ao buscar dados do usuário: {e}")
+            logger.error(f"❌ Erro ao buscar dados do usuário: {e}")
             return None
 
     def get_user_nickname(self, user_id: int) -> str:
         """Obtém o nickname de um usuário"""
-        user_data = self.get_user_data(user_id)
-        return user_data['nickname'] if user_data else "Usuário"
+        try:
+            user_data = self.get_user_data(user_id)
+            if user_data and 'nickname' in user_data:
+                return user_data['nickname']
+            return "Usuário"
+        except Exception as e:
+            logger.error(f"❌ Erro ao obter nickname: {e}")
+            return "Usuário"
 
     def update_user_nickname(self, user_id: int, new_nickname: str) -> bool:
         """Atualiza o nickname de um usuário"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                return False
+                
             cursor = conn.cursor()
             cursor.execute(
                 "UPDATE users SET nickname = ? WHERE user_id = ?",
@@ -176,15 +214,19 @@ class Database:
             )
             conn.commit()
             conn.close()
+            logger.info(f"✅ Nickname atualizado para: {new_nickname}")
             return True
         except Exception as e:
-            logger.error(f"Erro ao atualizar nickname: {e}")
+            logger.error(f"❌ Erro ao atualizar nickname: {e}")
             return False
 
     def update_user_salary(self, user_id: int, new_salary: float) -> bool:
         """Atualiza o salário de um usuário"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                return False
+                
             cursor = conn.cursor()
             cursor.execute(
                 "UPDATE users SET salario_liquido = ? WHERE user_id = ?",
@@ -192,9 +234,10 @@ class Database:
             )
             conn.commit()
             conn.close()
+            logger.info(f"✅ Salário atualizado para: {new_salary}")
             return True
         except Exception as e:
-            logger.error(f"Erro ao atualizar salário: {e}")
+            logger.error(f"❌ Erro ao atualizar salário: {e}")
             return False
 
     def add_transaction(self, user_id: int, tipo: str, categoria: str, subcategoria: str, 
@@ -204,10 +247,13 @@ class Database:
             # Validar e formatar a data
             data_formatada = self._parse_and_validate_date(data)
             if not data_formatada:
-                logger.error(f"Data inválida: {data}")
+                logger.error(f"❌ Data inválida: {data}")
                 return False
                 
             conn = self.get_connection()
+            if conn is None:
+                return False
+                
             cursor = conn.cursor()
             data_registro = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
@@ -219,7 +265,7 @@ class Database:
             
             conn.commit()
             conn.close()
-            logger.info(f"✅ Transação de {valor} adicionada para usuário {user_id}")
+            logger.info(f"✅ Transação de R$ {valor} adicionada para usuário {user_id}")
             return True
         except Exception as e:
             logger.error(f"❌ Erro ao adicionar transação: {e}")
@@ -228,27 +274,45 @@ class Database:
     def _parse_and_validate_date(self, date_str: str) -> Optional[str]:
         """Converte data no formato DD/MM/AAAA para AAAA-MM-DD"""
         try:
-            parts = date_str.split('/')
+            # Remover espaços e caracteres especiais
+            clean_date = ''.join(c for c in date_str if c.isdigit() or c == '/')
+            
+            if 'hoje' in date_str.lower():
+                today = datetime.datetime.now()
+                return today.strftime('%Y-%m-%d')
+                
+            parts = clean_date.split('/')
             if len(parts) == 3:
                 day, month, year = parts
-                # Validar se são números
-                if not (day.isdigit() and month.isdigit() and year.isdigit()):
+            else:
+                # Tentar parse como DDMMAAAA
+                if len(clean_date) == 8:
+                    day, month, year = clean_date[:2], clean_date[2:4], clean_date[4:]
+                else:
                     return None
-                
-                day_int, month_int, year_int = int(day), int(month), int(year)
-                
-                # Validações básicas
-                if not (1 <= month_int <= 12):
-                    return None
-                if not (1 <= day_int <= 31):
-                    return None
-                if not (1900 <= year_int <= 2100):
-                    return None
-                
-                # Formatar para SQLite
-                return f"{year_int:04d}-{month_int:02d}-{day_int:02d}"
-            return None
-        except Exception:
+            
+            # Validar se são números
+            if not (day.isdigit() and month.isdigit() and year.isdigit()):
+                return None
+            
+            day_int, month_int, year_int = int(day), int(month), int(year)
+            
+            # Ajustar ano se necessário (2 dígitos)
+            if year_int < 100:
+                year_int += 2000 if year_int < 50 else 1900
+            
+            # Validações básicas
+            if not (1 <= month_int <= 12):
+                return None
+            if not (1 <= day_int <= 31):
+                return None
+            if not (2020 <= year_int <= 2100):
+                return None
+            
+            # Formatar para SQLite
+            return f"{year_int:04d}-{month_int:02d}-{day_int:02d}"
+        except Exception as e:
+            logger.error(f"❌ Erro ao converter data {date_str}: {e}")
             return None
 
     def get_monthly_expenses(self, user_id: int, month: int = None, year: int = None) -> Dict:
@@ -260,6 +324,9 @@ class Database:
                 year = datetime.datetime.now().year
                 
             conn = self.get_connection()
+            if conn is None:
+                return {'fixo': {}, 'flexivel': {}}
+                
             cursor = conn.cursor()
             
             cursor.execute('''
@@ -290,13 +357,16 @@ class Database:
                 
             return expenses
         except Exception as e:
-            logger.error(f"Erro ao buscar gastos mensais: {e}")
+            logger.error(f"❌ Erro ao buscar gastos mensais: {e}")
             return {'fixo': {}, 'flexivel': {}}
 
     def get_monthly_transactions(self, user_id: int, month: int, year: int) -> List[Dict]:
         """Obtém todas as transações de um mês específico"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                return []
+                
             cursor = conn.cursor()
             
             cursor.execute('''
@@ -313,8 +383,11 @@ class Database:
             transactions = []
             for row in rows:
                 # Converter data para formato brasileiro
-                data_obj = datetime.datetime.strptime(row['data'], '%Y-%m-%d')
-                data_br = data_obj.strftime('%d/%m/%Y')
+                try:
+                    data_obj = datetime.datetime.strptime(row['data'], '%Y-%m-%d')
+                    data_br = data_obj.strftime('%d/%m/%Y')
+                except:
+                    data_br = row['data']
                 
                 transaction = dict(row)
                 transaction['data'] = data_br
@@ -322,35 +395,48 @@ class Database:
                 
             return transactions
         except Exception as e:
-            logger.error(f"Erro ao buscar transações mensais: {e}")
+            logger.error(f"❌ Erro ao buscar transações mensais: {e}")
             return []
 
     def add_custom_category(self, user_id: int, tipo: str, nome: str) -> bool:
         """Adiciona uma categoria personalizada"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                return False
+                
             cursor = conn.cursor()
             data_criacao = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
-            cursor.execute('''
-                INSERT INTO custom_categories (user_id, tipo, nome, data_criacao)
-                VALUES (?, ?, ?, ?)
-            ''', (user_id, tipo, nome, data_criacao))
-            
-            conn.commit()
+            try:
+                cursor.execute('''
+                    INSERT INTO custom_categories (user_id, tipo, nome, data_criacao)
+                    VALUES (?, ?, ?, ?)
+                ''', (user_id, tipo, nome, data_criacao))
+                conn.commit()
+                logger.info(f"✅ Categoria '{nome}' adicionada com sucesso")
+                success = True
+            except sqlite3.IntegrityError:
+                # Categoria já existe - isso é normal
+                conn.rollback()
+                success = True
+            except Exception as e:
+                logger.error(f"❌ Erro ao adicionar categoria: {e}")
+                success = False
+                
             conn.close()
-            return True
-        except sqlite3.IntegrityError:
-            # Categoria já existe
-            return True
+            return success
         except Exception as e:
-            logger.error(f"Erro ao adicionar categoria personalizada: {e}")
+            logger.error(f"❌ Erro ao acessar banco para categoria: {e}")
             return False
 
     def get_custom_categories(self, user_id: int, tipo: str) -> List[str]:
         """Obtém as categorias personalizadas de um usuário"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                return []
+                
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT nome FROM custom_categories 
@@ -363,13 +449,16 @@ class Database:
             
             return [row['nome'] for row in rows]
         except Exception as e:
-            logger.error(f"Erro ao buscar categorias personalizadas: {e}")
+            logger.error(f"❌ Erro ao buscar categorias personalizadas: {e}")
             return []
 
     def delete_custom_category(self, user_id: int, tipo: str, nome: str) -> bool:
         """Exclui uma categoria personalizada"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                return False
+                
             cursor = conn.cursor()
             cursor.execute('''
                 DELETE FROM custom_categories 
@@ -378,15 +467,19 @@ class Database:
             
             conn.commit()
             conn.close()
+            logger.info(f"✅ Categoria '{nome}' excluída")
             return True
         except Exception as e:
-            logger.error(f"Erro ao excluir categoria personalizada: {e}")
+            logger.error(f"❌ Erro ao excluir categoria personalizada: {e}")
             return False
 
     def get_category_expenses(self, user_id: int, tipo: str, categoria: str) -> List[Dict]:
         """Obtém todos os gastos de uma categoria específica"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                return []
+                
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT * FROM transactions 
@@ -400,8 +493,11 @@ class Database:
             gastos = []
             for row in rows:
                 # Converter data para formato brasileiro
-                data_obj = datetime.datetime.strptime(row['data'], '%Y-%m-%d')
-                data_br = data_obj.strftime('%d/%m/%Y')
+                try:
+                    data_obj = datetime.datetime.strptime(row['data'], '%Y-%m-%d')
+                    data_br = data_obj.strftime('%d/%m/%Y')
+                except:
+                    data_br = row['data']
                 
                 gasto = dict(row)
                 gasto['data'] = data_br
@@ -409,13 +505,16 @@ class Database:
                 
             return gastos
         except Exception as e:
-            logger.error(f"Erro ao buscar gastos da categoria: {e}")
+            logger.error(f"❌ Erro ao buscar gastos da categoria: {e}")
             return []
 
     def add_goal(self, user_id: int, descricao: str, tipo: str, valor_meta: float, prazo: str = None) -> bool:
         """Adiciona um novo objetivo financeiro"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                return False
+                
             cursor = conn.cursor()
             data_criacao = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
@@ -431,15 +530,19 @@ class Database:
             
             conn.commit()
             conn.close()
+            logger.info(f"✅ Objetivo '{descricao}' adicionado")
             return True
         except Exception as e:
-            logger.error(f"Erro ao adicionar objetivo: {e}")
+            logger.error(f"❌ Erro ao adicionar objetivo: {e}")
             return False
 
     def get_user_goals(self, user_id: int) -> List[Dict]:
         """Obtém todos os objetivos de um usuário"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                return []
+                
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT * FROM goals 
@@ -466,13 +569,16 @@ class Database:
                 
             return goals
         except Exception as e:
-            logger.error(f"Erro ao buscar objetivos: {e}")
+            logger.error(f"❌ Erro ao buscar objetivos: {e}")
             return []
 
     def update_goal_progress(self, goal_id: int, progresso: float) -> bool:
         """Atualiza o progresso de um objetivo"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                return False
+                
             cursor = conn.cursor()
             cursor.execute('''
                 UPDATE goals SET progresso = ? WHERE id = ?
@@ -482,27 +588,34 @@ class Database:
             conn.close()
             return True
         except Exception as e:
-            logger.error(f"Erro ao atualizar progresso do objetivo: {e}")
+            logger.error(f"❌ Erro ao atualizar progresso do objetivo: {e}")
             return False
 
     def delete_goal(self, goal_id: int) -> bool:
         """Exclui um objetivo"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                return False
+                
             cursor = conn.cursor()
             cursor.execute('DELETE FROM goals WHERE id = ?', (goal_id,))
             
             conn.commit()
             conn.close()
+            logger.info(f"✅ Objetivo {goal_id} excluído")
             return True
         except Exception as e:
-            logger.error(f"Erro ao excluir objetivo: {e}")
+            logger.error(f"❌ Erro ao excluir objetivo: {e}")
             return False
 
     def reset_user_data(self, user_id: int) -> bool:
         """Reinicia os dados do usuário (exclui transações e objetivos)"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                return False
+                
             cursor = conn.cursor()
             
             # Excluir transações
@@ -514,17 +627,27 @@ class Database:
             # Excluir categorias personalizadas
             cursor.execute('DELETE FROM custom_categories WHERE user_id = ?', (user_id,))
             
+            # Excluir salários (exceto o principal)
+            cursor.execute('DELETE FROM salaries WHERE user_id = ? AND principal = 0', (user_id,))
+            
+            # Excluir rendas extras
+            cursor.execute('DELETE FROM extra_incomes WHERE user_id = ?', (user_id,))
+            
             conn.commit()
             conn.close()
+            logger.info(f"✅ Dados do usuário {user_id} resetados")
             return True
         except Exception as e:
-            logger.error(f"Erro ao reiniciar dados do usuário: {e}")
+            logger.error(f"❌ Erro ao reiniciar dados do usuário: {e}")
             return False
 
     def fix_goals_data(self):
         """Corrige dados inconsistentes na tabela de objetivos"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                return False
+                
             cursor = conn.cursor()
             
             # Verificar se a coluna progresso existe
@@ -532,7 +655,7 @@ class Database:
             columns = [column[1] for column in cursor.fetchall()]
             
             if 'progresso' not in columns:
-                logger.info("Adicionando coluna progresso à tabela goals")
+                logger.info("🔧 Adicionando coluna progresso à tabela goals")
                 cursor.execute('ALTER TABLE goals ADD COLUMN progresso REAL DEFAULT 0')
             
             conn.commit()
@@ -541,7 +664,7 @@ class Database:
             return True
             
         except Exception as e:
-            logger.error(f"Erro ao corrigir dados dos objetivos: {e}")
+            logger.error(f"❌ Erro ao corrigir dados dos objetivos: {e}")
             return False
 
     # ========== MÉTODOS PARA SALÁRIOS ==========
@@ -550,6 +673,9 @@ class Database:
         """Adiciona um novo salário"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                return False
+                
             cursor = conn.cursor()
             data_criacao = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
@@ -567,7 +693,7 @@ class Database:
             
             conn.commit()
             conn.close()
-            logger.info(f"✅ Salário de {valor} adicionado para usuário {user_id}")
+            logger.info(f"✅ Salário de R$ {valor} adicionado para usuário {user_id}")
             return True
         except Exception as e:
             logger.error(f"❌ Erro ao adicionar salário: {e}")
@@ -577,6 +703,9 @@ class Database:
         """Obtém todos os salários de um usuário"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                return []
+                
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT * FROM salaries 
@@ -603,42 +732,52 @@ class Database:
                 
             return salaries
         except Exception as e:
-            logger.error(f"Erro ao buscar salários: {e}")
+            logger.error(f"❌ Erro ao buscar salários: {e}")
             return []
 
     def update_salary(self, salary_id: int, origem: str = None, valor: float = None) -> bool:
-        """Atualiza um salário existente"""
+        """Atualiza um salário no banco de dados - VERSÃO CORRIGIDA"""
         try:
+            logger.info(f"🔍 DATABASE: update_salary chamado - id: {salary_id}, origem: {origem}, valor: {valor}")
+            
             conn = self.get_connection()
+            if conn is None:
+                return False
+                
             cursor = conn.cursor()
             
-            if origem and valor:
-                cursor.execute('''
-                    UPDATE salaries SET origem = ?, valor = ? 
-                    WHERE id = ?
-                ''', (origem, valor, salary_id))
-            elif origem:
-                cursor.execute('''
-                    UPDATE salaries SET origem = ? 
-                    WHERE id = ?
-                ''', (origem, salary_id))
-            elif valor:
-                cursor.execute('''
-                    UPDATE salaries SET valor = ? 
-                    WHERE id = ?
-                ''', (valor, salary_id))
+            if origem is not None and valor is not None:
+                cursor.execute('UPDATE salaries SET origem = ?, valor = ? WHERE id = ?', 
+                            (origem, valor, salary_id))
+                logger.info(f"✅ Database: Atualizando salário {salary_id} - origem: {origem}, valor: {valor}")
+            elif origem is not None:
+                cursor.execute('UPDATE salaries SET origem = ? WHERE id = ?', 
+                            (origem, salary_id))
+                logger.info(f"✅ Database: Atualizando salário {salary_id} - origem: {origem}")
+            elif valor is not None:
+                cursor.execute('UPDATE salaries SET valor = ? WHERE id = ?', 
+                            (valor, salary_id))
+                logger.info(f"✅ Database: Atualizando salário {salary_id} - valor: {valor}")
+            else:
+                logger.info("❌ Database: Nada para atualizar")
+                conn.close()
+                return False
             
             conn.commit()
             conn.close()
+            logger.info(f"✅ Database: Salário {salary_id} atualizado com sucesso")
             return True
         except Exception as e:
-            logger.error(f"Erro ao atualizar salário: {e}")
+            logger.error(f"❌ Database: Erro ao atualizar salário {salary_id}: {e}")
             return False
 
     def set_principal_salary(self, salary_id: int, user_id: int) -> bool:
         """Define um salário como principal"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                return False
+                
             cursor = conn.cursor()
             
             # Remover principal de todos os salários do usuário
@@ -655,15 +794,19 @@ class Database:
             
             conn.commit()
             conn.close()
+            logger.info(f"✅ Salário {salary_id} definido como principal")
             return True
         except Exception as e:
-            logger.error(f"Erro ao definir salário principal: {e}")
+            logger.error(f"❌ Erro ao definir salário principal: {e}")
             return False
 
     def delete_salary(self, salary_id: int) -> bool:
         """Exclui um salário (apenas se não for principal)"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                return False
+                
             cursor = conn.cursor()
             
             # Verificar se é o salário principal
@@ -672,14 +815,16 @@ class Database:
             
             if result and result['principal']:
                 # Não permitir excluir salário principal
+                logger.info("❌ Tentativa de excluir salário principal bloqueada")
                 return False
             
             cursor.execute('DELETE FROM salaries WHERE id = ?', (salary_id,))
             conn.commit()
             conn.close()
+            logger.info(f"✅ Salário {salary_id} excluído")
             return True
         except Exception as e:
-            logger.error(f"Erro ao excluir salário: {e}")
+            logger.error(f"❌ Erro ao excluir salário: {e}")
             return False
 
     # ========== MÉTODOS PARA RENDAS EXTRAS ==========
@@ -688,6 +833,9 @@ class Database:
         """Adiciona uma nova renda extra"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                return False
+                
             cursor = conn.cursor()
             data_criacao = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
@@ -698,7 +846,7 @@ class Database:
             
             conn.commit()
             conn.close()
-            logger.info(f"✅ Renda extra de {valor} adicionada para usuário {user_id}")
+            logger.info(f"✅ Renda extra de R$ {valor} adicionada para usuário {user_id}")
             return True
         except Exception as e:
             logger.error(f"❌ Erro ao adicionar renda extra: {e}")
@@ -708,6 +856,9 @@ class Database:
         """Obtém todas as rendas extras de um usuário"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                return []
+                
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT * FROM extra_incomes 
@@ -734,49 +885,60 @@ class Database:
                 
             return incomes
         except Exception as e:
-            logger.error(f"Erro ao buscar rendas extras: {e}")
+            logger.error(f"❌ Erro ao buscar rendas extras: {e}")
             return []
 
     def update_extra_income(self, income_id: int, origem: str = None, valor: float = None) -> bool:
         """Atualiza uma renda extra existente"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                return False
+                
             cursor = conn.cursor()
             
-            if origem and valor:
+            if origem is not None and valor is not None:
                 cursor.execute('''
                     UPDATE extra_incomes SET origem = ?, valor = ? 
                     WHERE id = ?
                 ''', (origem, valor, income_id))
-            elif origem:
+            elif origem is not None:
                 cursor.execute('''
                     UPDATE extra_incomes SET origem = ? 
                     WHERE id = ?
                 ''', (origem, income_id))
-            elif valor:
+            elif valor is not None:
                 cursor.execute('''
                     UPDATE extra_incomes SET valor = ? 
                     WHERE id = ?
                 ''', (valor, income_id))
+            else:
+                conn.close()
+                return False
             
             conn.commit()
             conn.close()
+            logger.info(f"✅ Renda extra {income_id} atualizada")
             return True
         except Exception as e:
-            logger.error(f"Erro ao atualizar renda extra: {e}")
+            logger.error(f"❌ Erro ao atualizar renda extra: {e}")
             return False
 
     def delete_extra_income(self, income_id: int) -> bool:
         """Exclui uma renda extra"""
         try:
             conn = self.get_connection()
+            if conn is None:
+                return False
+                
             cursor = conn.cursor()
             cursor.execute('DELETE FROM extra_incomes WHERE id = ?', (income_id,))
             conn.commit()
             conn.close()
+            logger.info(f"✅ Renda extra {income_id} excluída")
             return True
         except Exception as e:
-            logger.error(f"Erro ao excluir renda extra: {e}")
+            logger.error(f"❌ Erro ao excluir renda extra: {e}")
             return False
 
     # ========== MÉTODOS DE BACKUP E RECUPERAÇÃO ==========
@@ -892,7 +1054,7 @@ def fix_goals_data():
     """Corrige dados dos objetivos"""
     return db.fix_goals_data()
 
-# Novas funções para salários
+# Funções para salários
 def add_salary(user_id: int, origem: str, valor: float, principal: bool = False) -> bool:
     """Adiciona salário"""
     return db.add_salary(user_id, origem, valor, principal)
@@ -913,7 +1075,7 @@ def delete_salary(salary_id: int) -> bool:
     """Exclui salário"""
     return db.delete_salary(salary_id)
 
-# Novas funções para rendas extras
+# Funções para rendas extras
 def add_extra_income(user_id: int, origem: str, valor: float) -> bool:
     """Adiciona renda extra"""
     return db.add_extra_income(user_id, origem, valor)

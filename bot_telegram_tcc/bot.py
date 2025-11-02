@@ -55,11 +55,20 @@ def main():
     cadastro_conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', h.start)],
         states={
-            h.GET_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.get_name)],
-            h.GET_SALARY: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.get_salary)],
-            h.TIPO_GASTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.tipo_gasto_handler)],
+            h.GET_NAME: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, h.get_name),
+                MessageHandler(filters.ALL, lambda u, c: u.message.reply_text("❌ Por favor, digite apenas texto para seu nome."))
+            ],
+            h.GET_SALARY: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, h.get_salary),
+                MessageHandler(filters.ALL, lambda u, c: u.message.reply_text("❌ Por favor, digite um valor numérico para o salário."))
+            ],
         },
-        fallbacks=[CommandHandler('cancel', h.cancel)],
+        fallbacks=[
+            CommandHandler('cancel', h.cancel),
+            CommandHandler('start', h.start),  # Permite reiniciar o cadastro
+            MessageHandler(filters.ALL, lambda u, c: u.message.reply_text("❌ Operação inválida. Use /cancel para cancelar ou continue o cadastro."))
+        ],
         allow_reentry=True,
         per_user=True,
         per_chat=True,
@@ -98,7 +107,7 @@ def main():
         name="gastos_conv"
     )
 
-    # Handler separado para calendário de gastos
+    # Handler separado para calendário de gastos - CORRIGIDO
     gastos_calendario_handler = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(h.Calendar.handle_callback, pattern='^CAL_')
@@ -106,14 +115,19 @@ def main():
         states={
             h.DATA_GASTO: [
                 CallbackQueryHandler(h.Calendar.handle_callback, pattern='^CAL_'),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, h.handle_date_input)
             ],
         },
-        fallbacks=[CallbackQueryHandler(h.cancel_callback, pattern='^cancel$')],
+        fallbacks=[
+            CallbackQueryHandler(h.cancel_callback, pattern='^cancel$'),
+            CommandHandler('cancel', h.cancel)
+        ],
         allow_reentry=True,
         per_user=True,
         per_chat=True,
         name="gastos_calendario_conv"
     )
+
     
     # 3. SUAS CATEGORIAS (sem CallbackQueryHandler)
     suas_categorias_conv_handler = ConversationHandler(
@@ -173,17 +187,21 @@ def main():
         name="goals_conv"
     )
 
-    # Handler separado para calendário de objetivos
+    # ✅ CORREÇÃO DO CALENDÁRIO DE OBJETIVOS:
     goals_calendario_handler = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(h.goal_deadline_calendar_handler, pattern='^CAL_')
         ],
         states={
             h.GOAL_DEADLINE_CALENDAR: [
-                CallbackQueryHandler(h.goal_deadline_calendar_handler, pattern='^CAL_')
+                CallbackQueryHandler(h.goal_deadline_calendar_handler, pattern='^CAL_'),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, h.goal_deadline_manual_handler)
             ],
         },
-        fallbacks=[CallbackQueryHandler(h.cancel_callback, pattern='^cancel$')],
+        fallbacks=[
+            CallbackQueryHandler(h.cancel_callback, pattern='^cancel$'),
+            CommandHandler('cancel', h.cancel)
+        ],
         allow_reentry=True,
         per_user=True,
         per_chat=True,
@@ -268,14 +286,35 @@ def main():
         name="add_salary_conv"
     )
 
+    add_salary_conv = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex('^💵 Adicionar Salário$'), h.add_salary_handler)],
+        states={
+            h.ADD_SALARY_ORIGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.add_salary_origin_handler)],
+            h.ADD_SALARY_VALUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.add_salary_value_handler)],
+        },
+        fallbacks=[CommandHandler('cancel', h.cancel)],
+        per_message=True
+    )
+
+    # Handler para consultar salários
+    consultar_salarios_handler = MessageHandler(filters.Regex('^📊 Consultar Salários$'), h.consultar_salarios_handler)
+
+    # Handler para alterar salários
+    alterar_salarios_handler = MessageHandler(filters.Regex('^✏️ Alterar Salários$'), h.alterar_salarios_handler)
+
+    # Handler para callbacks de salário
+    salary_callback_handler = CallbackQueryHandler(
+        h.edit_salary_callback_handler, 
+        pattern='^edit_salary_|^cancel_edit_salary|^edit_origin_|^edit_value_|^make_principal_|^delete_salary_|^cancel_action'
+    )
+
     # 9. ALTERAR SALÁRIOS - Handler separado
     edit_salaries_main_handler = ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex(r'^(✏️ Alterar Salários)$'), h.alterar_salarios_handler)
         ],
         states={
-            h.EDIT_SALARY_ORIGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.edit_salary_origin_handler)],
-            h.EDIT_SALARY_VALUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, h.edit_salary_value_handler)],
+            # ✅ CORREÇÃO: Remover estados problemáticos e usar apenas callbacks
         },
         fallbacks=[CommandHandler('cancel', h.cancel)],
         allow_reentry=True,
@@ -284,21 +323,35 @@ def main():
         name="edit_salaries_main_conv"
     )
 
-    # Handler separado para CallbackQueryHandler de salários
-    edit_salaries_callback_handler = ConversationHandler(
+    # ✅ Handler para callbacks de salário (REMOVER os padrões de edição)
+    edit_salaries_callback_handler = CallbackQueryHandler(
+        h.edit_salary_callback_handler, 
+        pattern='^edit_salary_|^cancel_edit_salary|^make_principal_|^delete_salary_|^cancel_action'
+    )
+
+    # ✅ CONVERSATION HANDLER PARA EDIÇÃO DE SALÁRIOS (VERSÃO CORRIGIDA)
+    edit_salary_details_handler = ConversationHandler(
         entry_points=[
-            CallbackQueryHandler(h.edit_salary_select_handler, pattern='^edit_salary_|^cancel_edit_salary'),
-            CallbackQueryHandler(h.edit_salary_action_handler, pattern='^edit_origin|^edit_value|^make_principal|^delete_salary|^cancel_action')
+            CallbackQueryHandler(h.handle_edit_origin, pattern='^edit_origin_'),
+            CallbackQueryHandler(h.handle_edit_value, pattern='^edit_value_')
         ],
         states={
-            h.EDIT_SALARY_SELECT: [CallbackQueryHandler(h.edit_salary_select_handler, pattern='^edit_salary_|^cancel_edit_salary')],
-            h.EDIT_SALARY_ACTION: [CallbackQueryHandler(h.edit_salary_action_handler, pattern='^edit_origin|^edit_value|^make_principal|^delete_salary|^cancel_action')],
+            h.EDIT_SALARY_ORIGIN: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, h.process_salary_origin_edit)
+            ],
+            h.EDIT_SALARY_VALUE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, h.process_salary_value_edit)
+            ],
         },
-        fallbacks=[CallbackQueryHandler(h.cancel_callback, pattern='^cancel$')],
+        fallbacks=[
+            CommandHandler('cancel', h.cancel),
+            CallbackQueryHandler(h.cancel_callback, pattern='^cancel_action'),
+            MessageHandler(filters.Regex(r'^(🏠 Voltar ao Menu|/menu|/start)'), h.voltar_menu_handler)
+        ],
         allow_reentry=True,
         per_user=True,
         per_chat=True,
-        name="edit_salaries_callback_conv"
+        name="edit_salary_details_conv"
     )
 
     # 10. ADICIONAR RENDA EXTRA (sem CallbackQueryHandler)
@@ -317,7 +370,7 @@ def main():
         name="add_extra_income_conv"
     )
 
-    # 11. ALTERAR RENDAS EXTRAS - Handler único
+    # 11. ALTERAR RENDAS EXTRAS - Handler simplificado
     edit_extra_incomes_handler = ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex(r'^(✏️ Alterar Rendas Extras)$'), h.alterar_rendas_extras_handler)
@@ -387,15 +440,24 @@ def main():
 
     # ========== REGISTRO DE HANDLERS ==========
 
-    # 1. CONVERSATION HANDLERS (por ordem de especificidade)
-    application.add_handler(cadastro_conv_handler)
-    application.add_handler(gastos_conv_handler)
+    # 4. CALLBACK HANDLERS (PRIMEIRO - são mais específicos)
+    application.add_handler(CallbackQueryHandler(h.handle_analise_callback, pattern='^analise_'))
+    application.add_handler(CallbackQueryHandler(h.handle_modulos_callback, pattern='^modulo_'))
+    application.add_handler(CallbackQueryHandler(h.Calendar.handle_callback, pattern='^CAL_'))
+    application.add_handler(CallbackQueryHandler(h.MonthYearCalendar.handle_callback, pattern='^(MY_|EXTRATO_)'))
+    
+    # ✅ CORREÇÃO: Adicionar handlers de callback separados
+    application.add_handler(edit_salaries_callback_handler)
+
+    # 1. CONVERSATION HANDLERS (por ordem de especificidade)   
     application.add_handler(gastos_calendario_handler)
+    application.add_handler(gastos_conv_handler)
     application.add_handler(suas_categorias_conv_handler)
+    application.add_handler(cadastro_conv_handler) #novo
     application.add_handler(config_conv_handler)
     application.add_handler(goals_conv_handler)
-    application.add_handler(goals_calendario_handler)
     application.add_handler(update_goal_conv_handler)
+    application.add_handler(goals_calendario_handler)
     application.add_handler(update_goal_select_handler)
     application.add_handler(delete_goal_conv_handler)
     application.add_handler(delete_goal_select_handler)
@@ -403,22 +465,22 @@ def main():
     application.add_handler(extrato_calendario_handler)
     application.add_handler(add_salary_conv_handler)
     application.add_handler(edit_salaries_main_handler)
-    application.add_handler(edit_salaries_callback_handler)
+    application.add_handler(edit_salary_details_handler)  # ✅ ADICIONAR ESTE
     application.add_handler(add_extra_income_conv_handler)
     application.add_handler(edit_extra_incomes_handler)
 
     # 2. COMMAND HANDLERS
     application.add_handler(CommandHandler("start", h.start))
+    application.add_handler(CommandHandler("menu", h.menu_command))
+    application.add_handler(CommandHandler("ajuda", h.ajuda_handler))
+    application.add_handler(CommandHandler("cancel", h.cancel))
     application.add_handler(CommandHandler("analisar", h.analise_detalhada_handler))
     application.add_handler(CommandHandler("resumo", h.resumo_gastos_handler))
-    application.add_handler(CommandHandler("menu", h.menu_command))
     application.add_handler(CommandHandler("adicionar", h.adicionar_gastos_handler))
     application.add_handler(CommandHandler("analise_detalhada", h.analise_detalhada_handler))
     application.add_handler(CommandHandler("salarios", h.consultar_salarios_handler))
     application.add_handler(CommandHandler("rendas", h.consultar_rendas_extras_handler))
     application.add_handler(CommandHandler("extrato", h.extrato_gastos_handler))
-    application.add_handler(CommandHandler("ajuda", h.ajuda_handler))
-    application.add_handler(CommandHandler("cancel", h.cancel))
 
     # 3. MESSAGE HANDLERS ESPECÍFICOS
     # Saúde Financeira
@@ -440,20 +502,12 @@ def main():
     application.add_handler(MessageHandler(filters.Regex(r'^(📚 Glossário)$'), h.glossario_handler))
     application.add_handler(MessageHandler(filters.Regex(r'^(🎓 Módulos Educativos)$'), h.modulos_educativos_handler))
 
-    # 4. CALLBACK HANDLERS
-    application.add_handler(CallbackQueryHandler(h.handle_analise_callback, pattern='^analise_'))
-    application.add_handler(CallbackQueryHandler(h.handle_modulos_callback, pattern='^modulo_'))
-    
-    # Calendário handlers
-    application.add_handler(CallbackQueryHandler(h.Calendar.handle_callback, pattern='^CAL_'))
-    application.add_handler(CallbackQueryHandler(h.MonthYearCalendar.handle_callback, pattern='^(MY_|EXTRATO_)'))
-
-    # 5. MAIN MENU HANDLER (SEMPRE O ÚLTIMO)
+    # 6. MAIN MENU HANDLER (SEMPRE O ÚLTIMO)
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND,
         h.main_menu_handler
     ))
-    
+
     # ========== INICIALIZAÇÃO ==========
     
     # Informações de inicialização
