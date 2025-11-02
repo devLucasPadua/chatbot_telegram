@@ -29,9 +29,9 @@ class FinanceCoach:
         self.max_retries = config.API_MAX_RETRIES
         self.retry_delay = config.API_RETRY_DELAY
         
-        self.max_tokens_short = 80
-        self.max_tokens_medium = 120
-        self.max_tokens_long = 200
+        self.max_tokens_short = 500
+        self.max_tokens_medium = 1000
+        self.max_tokens_long = 3000
         
         # Sistema de prompts pré-definidos
         self._setup_prompts()
@@ -88,8 +88,8 @@ class FinanceCoach:
         
         # Verificar se API key está configurada corretamente
         if not self.api_key or self.api_key in ["SUA_KEY", "SUA_KEY_AQUI", "SUA_CHAVE_API"]:
-            logger.warning("❌ API key não configurada ou está com valor padrão, usando fallback")
-            return await self._get_fallback_response(prompt)
+            logger.warning("❌ API key não configurada ou está com valor padrão, retornando None")
+            return None # <-- Permite que o chamador use o fallback correto
         
         await self.ensure_session()
         
@@ -157,8 +157,8 @@ class FinanceCoach:
                 break
         
         # Se chegou aqui, todas as tentativas falharam
-        logger.info("🔄 Todas as tentativas falharam, usando fallback")
-        return await self._get_fallback_response(prompt)
+        logger.info("🔄 Todas as tentativas falharam, retornando None")
+        return None # <-- Permite que o chamador use o fallback correto
     
     async def _get_fallback_response(self, prompt: str) -> str:
         """Respostas fallback otimizadas"""
@@ -568,6 +568,30 @@ class FinanceCoach:
             "🚀 **ESTRATÉGIAS RÁPIDAS:**\n\n1. Regra 50-30-20 para orçamento\n2. Revisão semanal de extratos\n3. Meta de economia mensal realista\n4. Planeamento de compras grandes"
         ]
         return random.choice(recommendations)
+        
+    async def get_ai_quick_tip(self) -> str:
+        """Gera uma dica rápida e motivacional usando a IA."""
+        logger.info("🤖 Gerando Dica do Dia com IA...")
+        
+        prompt = "Dê um conselho financeiro útil e prático para um usuário no Brasil. Seja breve, direto, motivador e use no máximo 2 frases."
+        
+        try:
+            # Chamar a API com tokens curtos
+            response = await self._call_deepseek_api(
+                prompt, 
+                max_tokens=self.max_tokens_short
+            )
+            
+            if response:
+                return response
+            else:
+                # Se a API falhar (chave, timeout, etc.), use o fallback estático
+                logger.warning("🤖 Falha na API. Usando dica de fallback (get_quick_tip).")
+                return self.get_quick_tip() # Chama o método estático
+                
+        except Exception as e:
+            logger.error(f"Erro ao gerar dica de IA: {e}")
+            return self.get_quick_tip() # Fallback em caso de exceção
 
     async def close_session(self):
         """Fecha a sessão HTTP"""

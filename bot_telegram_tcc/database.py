@@ -13,10 +13,14 @@ class Database:
         self.db_path = db_path
         self.init_db()
         
+    # (VERSÃO NOVA para database.py)
+
     def get_connection(self):
         """Cria e retorna uma conexão com o banco de dados"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            # --- INÍCIO DA CORREÇÃO ---
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            # --- FIM DA CORREÇÃO ---
             conn.row_factory = sqlite3.Row
             return conn
         except Exception as e:
@@ -315,6 +319,8 @@ class Database:
             logger.error(f"❌ Erro ao converter data {date_str}: {e}")
             return None
 
+    # (SUBSTITUA ESTA FUNÇÃO EM database.py)
+
     def get_monthly_expenses(self, user_id: int, month: int = None, year: int = None) -> Dict:
         """Obtém os gastos mensais agrupados por tipo e categoria"""
         try:
@@ -329,6 +335,7 @@ class Database:
                 
             cursor = conn.cursor()
             
+            # --- INÍCIO DA CORREÇÃO (Revertendo para strftime) ---
             cursor.execute('''
                 SELECT tipo, categoria, subcategoria, SUM(valor) as total
                 FROM transactions 
@@ -338,6 +345,7 @@ class Database:
                 GROUP BY tipo, categoria, subcategoria
                 ORDER BY tipo, total DESC
             ''', (user_id, f"{month:02d}", str(year)))
+            # --- FIM DA CORREÇÃO ---
             
             rows = cursor.fetchall()
             conn.close()
@@ -360,6 +368,8 @@ class Database:
             logger.error(f"❌ Erro ao buscar gastos mensais: {e}")
             return {'fixo': {}, 'flexivel': {}}
 
+    # (SUBSTITUA ESTA FUNÇÃO EM database.py)
+
     def get_monthly_transactions(self, user_id: int, month: int, year: int) -> List[Dict]:
         """Obtém todas as transações de um mês específico"""
         try:
@@ -369,6 +379,7 @@ class Database:
                 
             cursor = conn.cursor()
             
+            # --- INÍCIO DA CORREÇÃO (Revertendo para strftime) ---
             cursor.execute('''
                 SELECT * FROM transactions 
                 WHERE user_id = ? 
@@ -376,6 +387,7 @@ class Database:
                 AND strftime('%Y', data) = ?
                 ORDER BY data DESC
             ''', (user_id, f"{month:02d}", str(year)))
+            # --- FIM DA CORREÇÃO ---
             
             rows = cursor.fetchall()
             conn.close()
