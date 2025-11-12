@@ -1,4 +1,4 @@
-```mermaid
+
 graph TD
 
     Start((Start)) --> StartCommand["Usuário envia /start"]
