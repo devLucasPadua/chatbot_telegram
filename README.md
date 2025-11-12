@@ -4,7 +4,7 @@ graph TD
     %% 1. PONTO DE ENTRADA E CADASTRO
     %% -----------------------------------------------------------------
     
-    [*] --> StartCommand{Usuário envia /start}
+    [*] --> StartCommand["Usuário envia /start"]
     
     StartCommand -- Novo Usuário (db.user_exists() == False) --> subgraph Cadastro [1. Fluxo de Cadastro (cadastro_conv_handler)]
         direction TD
