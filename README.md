@@ -1,347 +1,275 @@
-flowchart TD
-  %% Inicialização / Startup
-  Start(("Start: bot.py main()"))
-  CheckToken{ "config.BOT_TOKEN válido?" }
-  InitDB["db.init_db() — cria tabelas"]
-  FixGoals["db.fix_goals_data() — corrige goals.progresso"]
-  CreateApp["Application.builder().token(...).build()"]
-  RegisterHandlers["Registrar handlers (conversation, command, message, callback)"]
-  RunPolling["application.run_polling(drop_pending_updates=True, allowed_updates=['message','callback_query','chat_member'])"]
+graph TD
+    %% -----------------------------------------------------------------
+    %% 1. PONTO DE ENTRADA E CADASTRO
+    %% -----------------------------------------------------------------
+    
+    [*] --> StartCommand{Usuário envia /start}
+    
+    StartCommand -- Novo Usuário (db.user_exists() == False) --> subgraph Cadastro [1. Fluxo de Cadastro (cadastro_conv_handler)]
+        direction TD
+        Cad_GET_NAME[Estado: GET_NAME]
+        Cad_GET_SALARY[Estado: GET_SALARY]
+        Cad_TIPO_GASTO[Estado: TIPO_GASTO]
+        
+        Cad_GET_NAME -- Nome --> Cad_GET_SALARY
+        Cad_GET_SALARY -- Salário --> Cad_TIPO_GASTO
+        Cad_TIPO_GASTO -- (Redireciona para Fluxo de Gastos) --> Gastos_TIPO_GASTO
+    end
 
-  Start --> CheckToken
-  CheckToken -- "não" --> StopToken["Print erro e aborta"]
-  CheckToken -- "sim" --> InitDB
-  InitDB --> FixGoals
-  FixGoals --> CreateApp
-  CreateApp --> RegisterHandlers
-  RegisterHandlers --> RunPolling
+    StartCommand -- Usuário Existente (db.user_exists() == True) --> MainMenu
+    
+    %% -----------------------------------------------------------------
+    %% 2. HUB CENTRAL (MENU PRINCIPAL)
+    %% -----------------------------------------------------------------
+    
+    MainMenu[🏠 MENU PRINCIPAL / HUB\n(h.main_menu_handler)]
+    MainMenu -- /menu --> MainMenu
+    MainMenu -- /cancel --> MainMenu
+    MainMenu -- "🏠 Voltar ao Menu" --> MainMenu
+    
+    %% -----------------------------------------------------------------
+    %% 3. FLUXO DE GASTOS (O MAIS COMPLEXO)
+    %% -----------------------------------------------------------------
+    
+    MainMenu -- "🧮 Gastos / Rendas" --> Gastos_TIPO_GASTO
+    
+    subgraph Fluxo de Gastos [2. Fluxo de Gastos (gastos_conv_handler)]
+        direction TD
+        Gastos_TIPO_GASTO[Estado: TIPO_GASTO]
+        
+        %% Caminhos de Gastos
+        Gastos_TIPO_GASTO -- "🏠 Gastos Fixos" --> Gastos_CAT_FIXA[Estado: CATEGORIA_FIXA]
+        Gastos_TIPO_GASTO -- "🛍️ Gastos Flexíveis" --> Gastos_CAT_FLEX[Estado: CATEGORIA_FLEXIVEL]
+        
+        Gastos_CAT_FIXA -- "Categoria (Ex: Moradia)" --> Gastos_VALOR_GASTO[Estado: VALOR_GASTO]
+        Gastos_CAT_FIXA -- "Outros..." --> Gastos_OUTROS_FIXOS[Estado: OUTROS_FIXOS]
+        
+        Gastos_CAT_FLEX -- "Categoria (Ex: Alimentação)" --> Gastos_VALOR_GASTO
+        Gastos_CAT_FLEX -- "Outros..." --> Gastos_OUTROS_FLEX[Estado: OUTROS_FLEXIVEIS]
 
-  %% Entrada do usuário e Dispatcher
-  UMessage["Usuário envia /start ou mensagem"]
-  Dispatcher["Dispatcher -> encontra Handler"]
-  StartCmd["/start -> handlers.start"]
-  OtherCmds["Outros comandos / botões -> handlers diversos"]
+        %% Sub-fluxo "Outros Fixos"
+        Gastos_OUTROS_FIXOS -- "➕ Adicionar novo" --> Gastos_NOVA_CAT_FIXA[Estado: NOVA_CATEGORIA_OUTROS_FIXOS]
+        Gastos_OUTROS_FIXOS -- "📂 Minhas categorias" --> Gastos_MINHAS_CAT_FIXAS[Estado: MINHAS_CATEGORIAS_FIXAS]
+        Gastos_NOVA_CAT_FIXA -- Nome --> Gastos_VALOR_GASTO
+        Gastos_MINHAS_CAT_FIXAS -- Categoria --> Gastos_VALOR_GASTO
+        
+        %% Sub-fluxo "Outros Flexíveis"
+        Gastos_OUTROS_FLEX -- "➕ Adicionar novo" --> Gastos_NOVA_CAT_FLEX[Estado: NOVA_CATEGORIA_OUTROS]
+        Gastos_OUTROS_FLEX -- "📂 Minhas categorias" --> Gastos_MINHAS_CAT_FLEX[Estado: MINHAS_CATEGORIAS]
+        Gastos_NOVA_CAT_FLEX -- Nome --> Gastos_VALOR_GASTO
+        Gastos_MINHAS_CAT_FLEX -- Categoria --> Gastos_VALOR_GASTO
 
-  RunPolling --> UMessage
-  UMessage --> Dispatcher
-  Dispatcher -->|"/start"| StartCmd
-  Dispatcher -->|outros| OtherCmds
+        %% Caminhos de Rendas (links para outros fluxos)
+        Gastos_TIPO_GASTO -- "💰 Salário" --> Salarios_Menu
+        Gastos_TIPO_GASTO -- "💵 Renda extra" --> Renda_Menu
+        
+        %% Continuação do fluxo de gastos
+        Gastos_VALOR_GASTO -- Valor --> Gastos_DATA_GASTO[Estado: DATA_GASTO]
+        note right of Gastos_DATA_GASTO
+            - <b>gastos_calendario_handler</b> [cite: 65] (Callback ^CAL_)
+            - Entrada manual (h.handle_date_input) [cite: 63]
+        end note
+        
+        Gastos_DATA_GASTO -- Data --> Gastos_CONTINUAR[Estado: CONTINUAR_GASTOS\n(db.add_transaction)]
+        Gastos_CONTINUAR -- "✅ SIM" --> Gastos_TIPO_GASTO
+        Gastos_CONTINUAR -- "❌ NÃO" --> Gastos_RESUMO[Estado: RESUMO_GASTOS]
+        Gastos_RESUMO --> MainMenu
+    end
 
-  %% Cadastro (start)
-  CheckUser{ "db.user_exists(user_id)?" }
-  WelcomeReturning["Mostrar main_keyboard() (usuário existente)"]
-  AskName["Pedir nome -> estado GET_NAME"]
+    %% -----------------------------------------------------------------
+    %% 4. FLUXO DE OBJETIVOS
+    %% -----------------------------------------------------------------
+    
+    MainMenu -- "🎯 Objetivos" --> Objetivos_Menu[🎯 Menu Objetivos\n(h.objetivos_handler)]
+    
+    subgraph Fluxo de Objetivos [3. Fluxo de Objetivos (goals_conv, update_goal_conv, delete_goal_conv)]
+        direction TD
+        
+        %% Caminho 1: Adicionar Objetivo
+        Objetivos_Menu -- "🎯 Adicionar Objetivo" --> Goals_TYPE[Estado: GOAL_TYPE]
+        Goals_TYPE -- Tipo --> Goals_DESC[Estado: GOAL_DESCRIPTION]
+        Goals_DESC -- Descrição --> Goals_TARGET[Estado: GOAL_TARGET]
+        Goals_TARGET -- Valor --> Goals_DEADLINE[Estado: GOAL_DEADLINE / GOAL_DEADLINE_CALENDAR]
+        note right of Goals_DEADLINE
+            - <b>goals_calendario_handler</b> [cite: 74] (Callback ^CAL_)
+            - Entrada manual (h.goal_deadline_manual_handler) [cite: 73]
+        end note
+        Goals_DEADLINE -- Data (db.add_goal) --> MainMenu
+        
+        %% Caminho 2: Atualizar Progresso
+        Objetivos_Menu -- "📊 Atualizar Progresso" --> UpdateGoal_SELECT[Estado: SELECT_GOAL]
+        note right of UpdateGoal_SELECT
+            - <b>update_goal_select_handler</b> [cite: 78] (Callback ^goal_)
+        end note
+        UpdateGoal_SELECT -- Seleciona Objetivo --> UpdateGoal_VALUE[Estado: UPDATE_GOAL_PROGRESS]
+        UpdateGoal_VALUE -- Novo Valor (db.update_goal_progress) --> MainMenu
+        
+        %% Caminho 3: Excluir Objetivo
+        Objetivos_Menu -- "🗑️ Excluir Objetivo" --> DeleteGoal_SELECT[Estado: SELECT_GOAL_DELETE]
+        note right of DeleteGoal_SELECT
+            - <b>delete_goal_select_handler</b> [cite: 82] (Callback ^delete_goal_)
+        end note
+        DeleteGoal_SELECT -- Seleciona Objetivo --> DeleteGoal_CONFIRM[Estado: CONFIRM_DELETE_GOAL]
+        DeleteGoal_CONFIRM -- "✅ SIM, Excluir" (db.delete_goal) --> MainMenu
+        DeleteGoal_CONFIRM -- "❌ NÃO, Cancelar" --> MainMenu
+        
+        %% Caminho 4: Ação Direta
+        Objetivos_Menu -- "📋 Meus Objetivos" --> Action_MeusObjetivos(h.meus_objetivos_handler\nMostra lista e retorna)
+        Action_MeusObjetivos --> MainMenu
+    end
 
-  StartCmd --> CheckUser
-  CheckUser -- "sim" --> WelcomeReturning
-  CheckUser -- "não" --> AskName
+    %% -----------------------------------------------------------------
+    %% 5. FLUXO DE SALÁRIOS
+    %% -----------------------------------------------------------------
+    
+    Salarios_Menu[💰 Menu Salários\n(h.salario_handler)]
+    
+    subgraph Fluxo de Salários [4. Fluxo de Salários (add_salary_conv, edit_salaries_...)]
+        direction TD
+        
+        %% Caminho 1: Adicionar Salário
+        Salarios_Menu -- "💵 Adicionar Salário" --> AddSalary_ORIGIN[Estado: ADD_SALARY_ORIGIN]
+        AddSalary_ORIGIN -- Origem --> AddSalary_VALUE[Estado: ADD_SALARY_VALUE]
+        AddSalary_VALUE -- Valor (db.add_salary) --> MainMenu
+        
+        %% Caminho 2: Alterar Salários
+        Salarios_Menu -- "✏️ Alterar Salários" --> EditSalary_SELECT[Estado: EDIT_SALARY_SELECT]
+        note right of EditSalary_SELECT
+             - <b>edit_salaries_callback_handler</b> [cite: 91] (Callback ^edit_salary_)
+        end note
+        EditSalary_SELECT -- Seleciona Salário --> EditSalary_ACTION[Estado: EDIT_SALARY_ACTION]
+        
+        EditSalary_ACTION -- "✏️ Renomear Origem" --> EditSalary_ORIGIN[Estado: EDIT_SALARY_ORIGIN]
+        EditSalary_ACTION -- "💰 Alterar Valor" --> EditSalary_VALUE[Estado: EDIT_SALARY_VALUE]
+        EditSalary_ACTION -- "🎯 Tornar Principal" (db.set_principal_salary) --> MainMenu
+        EditSalary_ACTION -- "🗑️ Excluir Salário" (db.delete_salary) --> MainMenu
+        
+        EditSalary_ORIGIN -- Novo Nome (db.update_salary) --> MainMenu
+        EditSalary_VALUE -- Novo Valor (db.update_salary) --> MainMenu
 
-  GetName["handlers.get_name -> guarda nickname em context.user_data"]
-  AskName --> GetName
-  GetName --> AskSalary["Pedir salário -> estado GET_SALARY"]
-  GetSalary["handlers.get_salary -> valida e cria usuário"]
-  AskSalary --> GetSalary
-  GetSalary --> ParseSalary{ "salário válido?" }
-  ParseSalary -- "não" --> AskSalary
-  ParseSalary -- "sim" --> AddUser["db.add_user(user_id,nickname,salario)"]
-  AddUser --> AddSalaryPrimary["db.add_salary(... principal=True)"]
-  AddSalaryPrimary --> ShowTipoGasto["Mostrar tipo_gasto_keyboard() -> estado TIPO_GASTO"]
-  ShowTipoGasto --> MainMenuEntry["Redireciona ao menu principal / TIPO_GASTO"]
+        %% Caminho 3: Ação Direta
+        Salarios_Menu -- "📊 Consultar Salários" --> Action_ConsultarSalarios(h.consultar_salarios_handler)
+        Action_ConsultarSalarios --> MainMenu
+    end
 
-  %% Menu principal
-  MainMenu["handlers.main_menu_handler -> mostra main_keyboard()"]
-  WelcomeReturning --> MainMenu
-  MainMenuEntry --> MainMenu
+    %% -----------------------------------------------------------------
+    %% 6. FLUXO DE RENDA EXTRA
+    %% -----------------------------------------------------------------
+    
+    Renda_Menu[💵 Menu Renda Extra\n(h.renda_extra_handler)]
+    
+    subgraph Fluxo de Renda Extra [5. Fluxo de Renda Extra (add_extra_income_conv, edit_extra_incomes_handler)]
+        direction TD
+        
+        %% Caminho 1: Adicionar Renda Extra
+        Renda_Menu -- "💵 Adicionar Renda Extra" --> AddExtra_ORIGIN[Estado: ADD_EXTRA_INCOME_ORIGIN]
+        AddExtra_ORIGIN -- Origem --> AddExtra_VALUE[Estado: ADD_EXTRA_INCOME_VALUE]
+        AddExtra_VALUE -- Valor (db.add_extra_income) --> MainMenu
+        
+        %% Caminho 2: Alterar Rendas Extras
+        Renda_Menu -- "✏️ Alterar Rendas Extras" --> EditExtra_SELECT[Estado: EDIT_EXTRA_INCOME_SELECT]
+        note right of EditExtra_SELECT
+             - <b>edit_extra_incomes_handler</b> [cite: 97] (Callback ^edit_extra_income_)
+        end note
+        EditExtra_SELECT -- Seleciona Renda --> EditExtra_ACTION[Estado: EDIT_EXTRA_INCOME_ACTION]
+        
+        EditExtra_ACTION -- "✏️ Renomear Origem" --> EditExtra_ORIGIN[Estado: EDIT_EXTRA_INCOME_ORIGIN]
+        EditExtra_ACTION -- "💰 Alterar Valor" --> EditExtra_VALUE[Estado: EDIT_EXTRA_INCOME_VALUE]
+        EditExtra_ACTION -- "🗑️ Excluir Renda Extra" (db.delete_extra_income) --> MainMenu
+        
+        EditExtra_ORIGIN -- Novo Nome (db.update_extra_income) --> MainMenu
+        EditExtra_VALUE -- Novo Valor (db.update_extra_income) --> MainMenu
+        
+        %% Caminho 3: Ação Direta
+        Renda_Menu -- "📊 Consultar Rendas Extras" --> Action_ConsultarRendas(h.consultar_rendas_extras_handler)
+        Action_ConsultarRendas --> MainMenu
+    end
 
-  %% Fluxo Gastos / Rendas (resumido)
-  subgraph GASTOS_FLOW ["Gastos / Rendas"]
-    direction TB
-    EntryGastos["Entrada: '🧮 Gastos / Rendas' ou botões"]
-    StartGastos["handlers.adicionar_gastos_handler -> valida user -> mostra gastos_keyboard()"]
-    TipoGasto["Estado TIPO_GASTO -> tipo_gasto_handler"]
+    %% -----------------------------------------------------------------
+    %% 7. FLUXO DE EXTRATO
+    %% -----------------------------------------------------------------
+    
+    MainMenu -- "🧾 Meu Extrato" --> Extrato_EntryPoint
+    
+    subgraph Fluxo de Extrato [6. Fluxo de Extrato (extrato_main_handler)]
+        direction TD
+        Extrato_EntryPoint[Estado: EXTRATO_MES\n(h.extrato_gastos_handler)]
+        note right of Extrato_EntryPoint
+            - <b>extrato_calendario_handler</b> [cite: 105] (Callback ^EXTRATO_ | ^MY_)
+            - Entrada manual (h.handle_month_year_input) [cite: 102]
+        end note
+        Extrato_EntryPoint -- Mês/Ano --> Action_ShowExtrato(h.MonthYearCalendar.show_month_extrato)
+        Action_ShowExtrato --> MainMenu
+    end
+    
+    %% -----------------------------------------------------------------
+    %% 8. FLUXO DE CATEGORIAS
+    %% -----------------------------------------------------------------
+    
+    MainMenu -- "📂 Suas Categorias" --> Cat_SUAS_CAT
+    
+    subgraph Fluxo de Categorias [7. Fluxo "Suas Categorias" (suas_categorias_conv_handler)]
+        direction TD
+        Cat_SUAS_CAT[Estado: SUAS_CATEGORIAS]
+        Cat_SUAS_CAT -- "🏦 Fixas" --> Cat_FIXAS[Estado: CATEGORIAS_FIXAS]
+        Cat_SUAS_CAT -- "🛍️ Flexíveis" --> Cat_FLEXIVEIS[Estado: CATEGORIAS_FLEXIVEIS]
+        
+        Cat_FIXAS -- "🗑️ Excluir Categoria" --> Cat_SELECT_EXCLUIR[Estado: SELECIONAR_CATEGORIA_EXCLUIR]
+        Cat_FLEXIVEIS -- "🗑️ Excluir Categoria" --> Cat_SELECT_EXCLUIR
+        
+        Cat_SELECT_EXCLUIR -- Seleciona Categoria --> Cat_CONFIRM_EXCLUIR[Estado: CONFIRMAR_EXCLUSAO_CATEGORIA]
+        Cat_CONFIRM_EXCLUIR -- "✅ SIM, Excluir" (db.delete_custom_category) --> MainMenu
+        Cat_CONFIRM_EXCLUIR -- "❌ NÃO, Cancelar" --> MainMenu
+    end
 
-    EntryGastos --> StartGastos
-    StartGastos --> TipoGasto
+    %% -----------------------------------------------------------------
+    %% 9. FLUXO DE CONFIGURAÇÕES
+    %% -----------------------------------------------------------------
+    
+    MainMenu -- "⚙️ Configurações" --> Config_Menu[⚙️ Menu Configurações\n(h.main_menu_handler)]
 
-    Fixos["Escolhe: 'Gastos Fixos' -> set tipo_gasto='fixo' -> categorias_fixas_keyboard() -> estado CATEGORIA_FIXA"]
-    Flexiveis["Escolhe: 'Gastos Flexíveis' -> set tipo_gasto='flexivel' -> categorias_flexiveis_keyboard() -> estado CATEGORIA_FLEXIVEL"]
-    Salario["Escolhe: 'Salário' -> chama salario_handler (menu salários)"]
-    RendaExtra["Escolhe: 'Renda extra' -> chama renda_extra_handler (menu rendas extra)"]
+    subgraph Fluxo de Configurações [8. Fluxo de Configurações (config_conv_handler)]
+        direction TD
+        Config_Menu -- "✏️ Editar Perfil" --> Config_EDIT_NAME[Estado: EDIT_NAME]
+        Config_EDIT_NAME -- Novo Nome (db.update_user_nickname) --> MainMenu
+        
+        Config_Menu -- "💰 Alterar Salário (Legado)" --> Config_EDIT_SALARY[Estado: EDIT_SALARY]
+        Config_EDIT_SALARY -- Novo Salário (db.update_user_salary) --> MainMenu
+        
+        Config_Menu -- "🔄 Redefinir" --> Config_CONFIRM_RESET[Estado: CONFIRM_RESET]
+        Config_CONFIRM_RESET -- "✅ SIM" (db.reset_user_data) --> MainMenu
+        Config_CONFIRM_RESET -- "❌ NÃO" --> MainMenu
+    end
 
-    TipoGasto -->|Gastos Fixos| Fixos
-    TipoGasto -->|Gastos Flexíveis| Flexiveis
-    TipoGasto -->|Salário| Salario
-    TipoGasto -->|Renda extra| RendaExtra
+    %% -----------------------------------------------------------------
+    %% 10. AÇÕES DIRETAS (Handlers Simples)
+    %% -----------------------------------------------------------------
+    
+    subgraph Ações Diretas (Handlers Simples) [9. Ações Diretas (sem ConversationHandler)]
+        direction TD
+        
+        %% Saúde Financeira
+        MainMenu -- "📈 Saúde Financeira" --> Saude_Menu[📈 Menu Saúde Financeira]
+        Saude_Menu -- "📊 Ver Métricas Detalhadas" --> Action_VerMetricas(h.ver_metricas_handler)
+        Saude_Menu -- "🧠 Recomendações IA" --> Action_Recomendacoes(h.recomendacoes_ia_handler)
+        Saude_Menu -- "📈 Análise Detalhada com IA" --> Action_AnaliseIA(h.analise_detalhada_ia_handler)
+        Action_VerMetricas --> MainMenu
+        Action_Recomendacoes --> MainMenu
+        Action_AnaliseIA --> MainMenu
+        
+        %% Educação Financeira
+        MainMenu -- "🎓 Educação Financeira" --> Edu_Menu[🎓 Menu Educação Financeira]
+        Edu_Menu -- "💡 Dica do Dia" --> Action_DicaDia(h.dica_do_dia_handler)
+        Edu_Menu -- "📚 Glossário" --> Action_Glossario(h.glossario_handler)
+        Edu_Menu -- "🎓 Módulos Educativos" --> Action_Modulos(h.modulos_educativos_handler)
+        Action_DicaDia --> MainMenu
+        Action_Glossario --> MainMenu
+        Action_Modulos --> MainMenu
 
-    %% Categorias -> VALOR -> DATA -> registro
-    CategoriaFixa["categoria_fixa_handler -> valida categoria -> pergunta VALOR_GASTO"]
-    CategoriaFlex["categoria_flexivel_handler -> valida categoria -> pergunta VALOR_GASTO"]
-
-    Fixos --> CategoriaFixa
-    Flexiveis --> CategoriaFlex
-
-    ValorGasto["VALOR_GASTO -> valor_gasto_handler -> valida valor -> context.user_data['valor_gasto']"]
-    CategoriaFixa --> ValorGasto
-    CategoriaFlex --> ValorGasto
-
-    CalendarView["Mostra Calendar.create_calendar() (InlineKeyboard) -> estado DATA_GASTO"]
-    ValorGasto --> CalendarView
-
-    CalendarCallback["CallbackQueryHandler Calendar.handle_callback pattern '^CAL_'"]
-    CalendarView --> CalendarCallback
-
-    DaySelect["CAL_DAY -> Calendar.handle_date_selection -> process_date_selection"]
-    ManualDate["CAL_MANUAL -> pede digitar data -> handle_date_input (mensagem)"]
-
-    CalendarCallback -->|CAL_DAY| DaySelect
-    CalendarCallback -->|CAL_MANUAL| ManualDate
-
-    ProcessTx["process_date_selection -> db.add_transaction(user_id,tipo,categoria,subcategoria,valor,descricao,date_str)"]
-    DaySelect --> ProcessTx
-    ManualDate --> ProcessTx
-
-    TxSuccess{"db.add_transaction retornou True?"}
-    ProcessTx --> TxSuccess
-    TxSuccess -- "sim" --> ConfirmRegistered["Envia confirmação e sim_nao_keyboard() -> CONTINUAR_GASTOS"]
-    TxSuccess -- "não" --> ErrorRegister["Informa erro e retorna ao menu"]
-
-    Continuar["CONTINUAR_GASTOS -> continuar_gastos_handler"]
-    ConfirmRegistered --> Continuar
-    Continuar -->|SIM| TipoGasto
-    Continuar -->|NÃO| ShowResumo["Gera resumo via db.get_monthly_expenses -> mostra saude_financeira_keyboard()"]
-  end
-
-  MainMenu --> EntryGastos
-
-  %% Extrato mensal (MonthYearCalendar)
-  subgraph EXTRATO_FLOW ["Extrato Mensal / MonthYearCalendar"]
-    direction TB
-    ExtratoEntry["Usuário -> '🧾 Meu Extrato' ou callback EXTRATO_SHOW_CALENDAR"]
-    ShowMYCalendar["MonthYearCalendar.create_month_year_calendar() -> InlineKeyboard"]
-    MYCallback["CallbackQueryHandler MonthYearCalendar.handle_callback pattern ^(MY_|EXTRATO_)"]
-    MY_MANUAL["MY_MANUAL -> pede entrada manual -> estado EXTRATO_MES -> handle_month_year_input"]
-    MY_MONTH["MY_MONTH -> chama show_month_extrato(year,month)"]
-    ShowMonthExtrato["MonthYearCalendar.show_month_extrato -> db.get_monthly_transactions + db.get_user_data -> formata resposta"]
-    SendExtrato["Envia/edita mensagem com extrato (agrupa por fixo/flexível, totais, % comprometido)"]
-
-    ExtratoEntry --> ShowMYCalendar
-    ShowMYCalendar --> MYCallback
-    MYCallback -->|MY_MANUAL| MY_MANUAL
-    MYCallback -->|MY_MONTH| MY_MONTH
-    MY_MANUAL --> ShowMonthExtrato
-    MY_MONTH --> ShowMonthExtrato
-    ShowMonthExtrato --> SendExtrato
-  end
-
-  MainMenu --> ExtratoEntry
-
-  %% Salários (Add / Edit / Consult)
-  subgraph SALARIOS_FLOW ["Salários e Rendas Extras"]
-    direction TB
-    SalMenu["'💰 Salário' -> salario_handler (menu)"]
-    AddSalaryFlow["add_salary_handler -> pede origem -> ADD_SALARY_ORIGIN -> add_salary_origin_handler -> pede valor -> ADD_SALARY_VALUE -> add_salary_value_handler -> db.add_salary(...)"]
-    ConsultSalaries["consultar_salarios_handler -> db.get_salaries(user_id) -> exibe lista, total"]
-    AlterSalaries["alterar_salarios_handler -> constrói InlineKeyboard com edit_salary_{id} -> estado EDIT_SALARY_SELECT"]
-    EditSelectCB["Callback edit_salary_{id} -> edit_salary_select_handler -> mostra ações (edit_origin, edit_value, make_principal, delete_salary) -> estado EDIT_SALARY_ACTION"]
-    EditActions["edit_salary_action_handler -> dependendo da ação: solicita novo valor/nome ou executa db.set_principal_salary/db.delete_salary"]
-    EditNameVal["EDIT_SALARY_ORIGIN / EDIT_SALARY_VALUE handlers atualizam via db.update_salary"]
-    AddSalaryFlow --> ConsultSalaries
-    SalMenu --> AddSalaryFlow
-    SalMenu --> ConsultSalaries
-    SalMenu --> AlterSalaries
-    AlterSalaries --> EditSelectCB
-    EditSelectCB --> EditActions
-    EditActions --> EditNameVal
-    EditActions -->|make_principal| SetPrincipal["db.set_principal_salary(salary_id,user_id)"]
-    EditActions -->|delete_salary| DeleteSalary["db.delete_salary(salary_id)"]
-  end
-
-  MainMenu --> SalMenu
-
-  %% Rendas Extras (Add / Edit / Consult)
-  subgraph RENDAS ["Rendas Extras"]
-    direction TB
-    RendaMenu["'💵 Renda extra' -> renda_extra_handler (menu)"]
-    AddExtraFlow["add_extra_income_handler -> pede origem -> ADD_EXTRA_INCOME_ORIGIN -> pede valor -> ADD_EXTRA_INCOME_VALUE -> db.add_extra_income"]
-    ConsultExtras["consultar_rendas_extras_handler -> db.get_extra_incomes -> exibe lista + total"]
-    AlterExtras["alterar_rendas_extras_handler -> InlineKeyboard edit_extra_income_{id} -> edit_extra_income_select_handler -> ações -> edit_extra_income_action_handler -> db.update_extra_income / db.delete_extra_income"]
-    RendaMenu --> AddExtraFlow
-    RendaMenu --> ConsultExtras
-    RendaMenu --> AlterExtras
-  end
-
-  MainMenu --> RendaMenu
-
-  %% Objetivos (Goals)
-  subgraph GOALS ["Objetivos Financeiros"]
-    direction TB
-    GoalsMenu["'🎯 Objetivos' -> objetivos_handler -> mostra objetivos_keyboard()"]
-    AddGoalStart["add_goal_handler -> pede tipo (economia_mensal/meta_especifica) -> estado GOAL_TYPE"]
-    GoalTypeSel["goal_type_handler -> armazena goal_type -> pede descrição -> estado GOAL_DESCRIPTION"]
-    GoalDesc["goal_description_handler -> armazena descricao -> pede valor -> estado GOAL_TARGET"]
-    GoalTarget["goal_target_handler -> se economia_mensal -> db.add_goal(tipo='economia_mensal',prazo=None) -> confirma\n else meta_especifica -> mostra Calendar -> estado GOAL_DEADLINE_CALENDAR"]
-    GoalDeadlineCB["goal_deadline_calendar_handler -> CAL_DAY_ -> process_goal_creation (db.add_goal tipo='meta_especifica' com prazo)"]
-    ViewGoals["meus_objetivos_handler -> db.get_user_goals -> exibe lista com progresso e barra"]
-    UpdateProgressStart["update_goal_progress_handler -> lista goals -> InlineButtons goal_{id} -> estado SELECT_GOAL"]
-    UpdateProgressCB["handle_goal_selection -> pergunta novo valor -> estado UPDATE_GOAL_PROGRESS -> update_goal_value_handler -> db.update_goal_progress"]
-    DeleteGoalStart["delete_goal_handler -> lista goals -> InlineButtons delete_goal_{id} -> estado SELECT_GOAL_DELETE"]
-    DeleteGoalCB["handle_goal_delete_selection -> confirma -> handle_confirm_delete_goal -> db.delete_goal"]
-
-    GoalsMenu --> AddGoalStart
-    GoalsMenu --> ViewGoals
-    GoalsMenu --> UpdateProgressStart
-    GoalsMenu --> DeleteGoalStart
-    AddGoalStart --> GoalTypeSel
-    GoalTypeSel --> GoalDesc
-    GoalDesc --> GoalTarget
-    GoalTarget -->|meta_especifica| GoalDeadlineCB
-    GoalTarget -->|economia_mensal| ConfirmGoalCreated["Confirma criação"] 
-  end
-
-  MainMenu --> GoalsMenu
-
-  %% Suas Categorias (personalizadas)
-  subgraph CATEGORIES ["Gerenciamento de Categorias Personalizadas"]
-    direction TB
-    SuasCatsEntry["'📂 Suas Categorias' -> suas_categorias_handler -> suas_categorias_keyboard()"]
-    SuasCatsMenu["suas_categorias_menu_handler -> escolha Fixas ou Flexíveis"]
-    ListFixWithDelete["categorias_fixas_keyboard_with_delete(user_id) -> mostra categorias '📂 nome' + '🗑️ Excluir Categoria'"]
-    ListFlexWithDelete["categorias_flexiveis_keyboard_with_delete(user_id)"]
-    SelectDeleteCat["selecionar_categoria_excluir_handler -> mostra confirmação com stats -> estado CONFIRMAR_EXCLUSAO_CATEGORIA"]
-    ConfirmDeleteCat["confirmar_exclusao_categoria_handler -> se SIM -> db.delete_custom_category -> informa sucesso; se NÃO -> cancela"]
-
-    SuasCatsEntry --> SuasCatsMenu
-    SuasCatsMenu --> ListFixWithDelete
-    SuasCatsMenu --> ListFlexWithDelete
-    ListFixWithDelete --> SelectDeleteCat
-    ListFlexWithDelete --> SelectDeleteCat
-    SelectDeleteCat --> ConfirmDeleteCat
-  end
-
-  MainMenu --> SuasCatsEntry
-
-  %% Configurações e Perfil
-  subgraph CONFIG ["Configurações"]
-    direction TB
-    ConfigEntry["'⚙️ Configurações' -> config_conv_handler -> config_keyboard()"]
-    EditProfile["✏️ Editar Perfil -> edit_profile_handler -> pede novo nome -> edit_name_handler -> db.update_user_nickname"]
-    EditSalary["💰 Alterar Salário -> edit_salary_handler -> pede novo valor -> edit_salary_process_handler -> db.update_user_salary"]
-    ResetData["🔄 Redefinir -> reset_data_handler -> confirma -> confirm_reset_handler -> db.reset_user_data(user_id)"]
-    ConfigEntry --> EditProfile
-    ConfigEntry --> EditSalary
-    ConfigEntry --> ResetData
-  end
-
-  MainMenu --> ConfigEntry
-
-  %% Educação Financeira
-  subgraph EDU ["Educação Financeira"]
-    direction TB
-    EduMenu["'🎓 Educação Financeira' -> educacao_keyboard()"]
-    DicaDia["'💡 Dica do Dia' -> dica_do_dia_handler -> coach.get_quick_tip()"]
-    Glossario["'📚 Glossário' -> glossario_handler (em desenvolvimento)"]
-    Modulos["'🎓 Módulos Educativos' -> modulos_educativos_handler (em desenvolvimento)"]
-    EduMenu --> DicaDia
-    EduMenu --> Glossario
-    EduMenu --> Modulos
-  end
-
-  MainMenu --> EduMenu
-
-  %% Saúde Financeira e IA (coach)
-  subgraph COACH ["Coach / IA (coach.FinanceCoach)"]
-    direction TB
-    HealthMenu["'📈 Saúde Financeira' -> saude_financeira_handler -> saude_financeira_keyboard()"]
-    AnaliseFlow["'📈 Análise Detalhada com IA' / /analise -> analise_detalhada_handler -> coach.get_detailed_analysis(user_id)"]
-    RecomFlow["'🧠 Recomendações IA' -> recomendacoes_ia_handler -> coach.get_personalized_recommendations(user_id)"]
-    MetasSugeridas["analise_detalhada_inline_keyboard -> '🎯 Metas Sugeridas' -> coach.get_suggested_goals(user_id)"]
-    CoachInternal["FinanceCoach.analyze_financial_health(user_id) -> usa db.get_user_data + db.get_monthly_expenses\n -> calcula totais, percentual, saldo -> retorna dict"]
-    CallAPI["FinanceCoach._call_deepseek_api(prompt,max_tokens) -> aiohttp POST, retry/backoff, cache"]
-    Fallbacks["FinanceCoach._get_fallback_response(prompt) -> respostas locais categorizadas"]
-    HealthMenu --> AnaliseFlow
-    HealthMenu --> RecomFlow
-    AnaliseFlow --> CoachInternal
-    RecomFlow --> CoachInternal
-    CoachInternal --> CallAPI
-    CallAPI -->|fail| Fallbacks
-    MetasSugeridas --> CallAPI
-  end
-
-  MainMenu --> HealthMenu
-
-  %% Callbacks gerais e utilitários
-  subgraph CALLBACKS ["Callbacks & Utilitários"]
-    direction TB
-    AnaliseCallbacks["CallbackQueryHandler handlers.handle_analise_callback pattern '^analise_'"]
-    ModulosCallback["CallbackQueryHandler handlers.handle_modulos_callback pattern '^modulo_'"]
-    CalendarCallbacks["CallbackQueryHandler Calendar.handle_callback pattern '^CAL_'"]
-    MonthYearCallbacks["CallbackQueryHandler MonthYearCalendar.handle_callback pattern '^(MY_|EXTRATO_)'"]
-    MainMenuHandler["Mensagem final: MessageHandler filters.TEXT & ~filters.COMMAND -> main_menu_handler"]
-    AnaliseCallbacks --> AnaliseFlow
-    ModulosCallback --> Modulos
-    CalendarCallbacks --> CalendarCallback
-    MonthYearCallbacks --> MYCallback
-    MainMenuHandler --> MainMenu
-  end
-
-  RunPolling --> AnaliseCallbacks
-
-  %% Database / Persistence
-  subgraph DBMODULE ["database.py (Database)"]
-    direction TB
-    DBClass["class Database(db_path)"]
-    Conn["get_connection() → sqlite3.connect"]
-    Schema["init_db() → cria tabelas users,transactions,custom_categories,goals,salaries,extra_incomes"]
-    CRUDUsers["add_user/get_user_data/update_user_nickname/update_user_salary/user_exists"]
-    Transactions["add_transaction/get_monthly_expenses/get_monthly_transactions/get_category_expenses"]
-    CustomCats["add_custom_category/get_custom_categories/delete_custom_category"]
-    GoalsDB["add_goal/get_user_goals/update_goal_progress/delete_goal/fix_goals_data"]
-    SalariesDB["add_salary/get_salaries/update_salary/set_principal_salary/delete_salary"]
-    ExtrasDB["add_extra_income/get_extra_incomes/update_extra_income/delete_extra_income"]
-    Backup["backup_database/restore_database"]
-    DBClass --> Conn
-    DBClass --> Schema
-    Schema --> CRUDUsers
-    Schema --> Transactions
-    Schema --> CustomCats
-    Schema --> GoalsDB
-    Schema --> SalariesDB
-    Schema --> ExtrasDB
-    DBClass --> Backup
-  end
-
-  %% Dependencies: Handlers -> DB and Coach
-  handlers_db[Handlers usam db.* funções] --> DBClass
-  handlers_coach[Handlers usam coach.finance_coach.*] --> COACH
-
-  %% Erros, Logs e Cleanups
-  subgraph ERRORS ["Erros, Logs e Fallbacks"]
-    direction TB
-    DBErrors["database.py -> log errors, retorna False ou valores default"]
-    HandlerErrors["handlers.py -> try/except e mensagens amigáveis ao usuário; limpa context.user_data quando necessário"]
-    CoachErrors["coach.py -> retry/backoff; se falha usa fallback local; log de todas as tentativas"]
-    Timeouts["Config timeouts: API_TIMEOUT_TOTAL, API_TIMEOUT_CONNECT, API_MAX_RETRIES, API_RETRY_DELAY"]
-    CloseSession["coach.finance_coach.close_session() on shutdown"]
-    DBErrors --> HandlerErrors
-    CoachErrors --> HandlerErrors
-    Timeouts --> CoachErrors
-    CloseSession --> CoachErrors
-  end
-
-  %% Finalização / Shutdown
-  Shutdown["Ctrl+C ou exceção -> application.stop; encerra sessões; print logs e finaliza"]
-  RunPolling --> Shutdown
-  Shutdown --> CloseSession
-
-  %% Notas Auxiliares visuais (não executáveis)
-  classDef module fill:#f9f,stroke:#333,stroke-width:1px;
-  class DBMODULE module;
-  class COACH module;
-  class GASTOS module;
-  class EXTRATO module;
-  class SALARIOS module;
-  class RENDAS module;
-  class GOALS module;
-  class CATEGORIES module;
-  class CONFIG module;
-  class EDU module;
+        %% Comandos Diretos
+        MainMenu -- "/ajuda" --> Action_Ajuda(h.ajuda_handler)
+        MainMenu -- "/analisar" --> Action_AnaliseIA
+        MainMenu -- "/resumo" --> Action_Resumo(h.resumo_gastos_handler)
+        Action_Ajuda --> MainMenu
+        Action_Resumo --> MainMenu
+    end
