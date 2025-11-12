@@ -17,7 +17,7 @@ graph TD
   end
 
   %% 2. Hub central (menu)
-  MainMenu["🏠 MENU PRINCIPAL / HUB\n(h.main_menu_handler)"]
+  MainMenu["MENU PRINCIPAL / HUB\n(h.main_menu_handler)"]
   MainMenu -- "/menu" --> MainMenu
   MainMenu -- "/cancel" --> MainMenu
   MainMenu -- "Voltar ao Menu" --> MainMenu
