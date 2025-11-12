@@ -7,16 +7,19 @@ graph TD
     %% 1. PONTO DE ENTRADA E CADASTRO
     %% -----------------------------------------------------------------
     
-    StartCommand -- Novo Usuário (db.user_exists() == False) --> subgraph Cadastro [1. Fluxo de Cadastro (cadastro_conv_handler)]
-        direction TD
-        Cad_GET_NAME["Estado: GET_NAME"]
-        Cad_GET_SALARY["Estado: GET_SALARY"]
-        Cad_TIPO_GASTO["Estado: TIPO_GASTO"]
-        
-        Cad_GET_NAME -- Nome --> Cad_GET_SALARY
-        Cad_GET_SALARY -- Salário --> Cad_TIPO_GASTO
-        Cad_TIPO_GASTO -- (Redireciona para Fluxo de Gastos) --> Gastos_TIPO_GASTO
-    end
+
+StartCommand -- Novo Usuário (db.user_exists() == False) --> CadastroEntry["Entrada Cadastro"]
+
+subgraph Cadastro [1. Fluxo de Cadastro (cadastro_conv_handler)]
+    direction TD
+    CadastroEntry --> Cad_GET_NAME["Estado: GET_NAME"]
+    Cad_GET_SALARY["Estado: GET_SALARY"]
+    Cad_TIPO_GASTO["Estado: TIPO_GASTO"]
+
+    Cad_GET_NAME -- Nome --> Cad_GET_SALARY
+    Cad_GET_SALARY -- Salário --> Cad_TIPO_GASTO
+    Cad_TIPO_GASTO -- (Redireciona para Fluxo de Gastos) --> Gastos_TIPO_GASTO
+end
 
     StartCommand -- Usuário Existente (db.user_exists() == True) --> MainMenu
     
