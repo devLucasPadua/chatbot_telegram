@@ -108,3 +108,85 @@ flowchart TB
     classDef mini fill:#f0f3f8,stroke:#bfcad6,color:#0b2433,stroke-width:1px
     classDef accent fill:#ffd166,stroke:#b88600,color:#111111,stroke-width:1px
     classDef root fill:#083044,stroke:#05232e,color:#ffffff,stroke-width:1px
+```
+
+```mermaid
+flowchart TB
+    MainMenu["🏠 MENU PRINCIPAL / HUB"] --> ObjetivosEntry["🎯 Objetivos"] & Action_Ajuda["/ajuda"] & Action_Resumo["/resumo"]
+    ObjetivosEntry --> Objetivos_Menu["🎯 Menu Objetivos"]
+    Objetivos_Menu --> Goals_TYPE["GOAL_TYPE"] & UpdateGoal_SELECT["Atualizar Progresso (SELECT_GOAL callback)"] & DeleteGoal_SELECT["Excluir Objetivo (SELECT_GOAL_DELETE callback)"] & Action_MeusObjetivos["📋 Meus Objetivos"]
+    Goals_TYPE --> Goals_DESC["GOAL_DESCRIPTION"]
+    Goals_DESC --> Goals_TARGET["GOAL_TARGET"]
+    Goals_TARGET --> Goals_DEADLINE["GOAL_DEADLINE (abre Calendar.handle_callback)"]
+    Goals_DEADLINE --> GOAL_DEADLINE_CALLBACK["GOAL_DEADLINE_CALENDAR_CALLBACK (callback)"]
+    GOAL_DEADLINE_CALLBACK --> MainMenu
+    UpdateGoal_SELECT --> UpdateGoal_VALUE["UPDATE_GOAL_PROGRESS"]
+    UpdateGoal_VALUE --> MainMenu
+    DeleteGoal_SELECT --> DeleteGoal_CONFIRM["CONFIRM_DELETE_GOAL (confirm callback)"]
+    DeleteGoal_CONFIRM --> MainMenu
+    Action_MeusObjetivos --> MainMenu
+    MainMenu --- ExtratoSection["🧾 Meu Extrato"] & CategoriasSection["📂 Suas Categorias"] & ConfigSection["⚙️ Configurações"] & SaudeSection["📈 Saúde Financeira"] & EduSection["🎓 Educação Financeira"]
+    ExtratoSection --> Extrato_EntryPoint["EXTRATO_MES (abre MonthYearCalendar.handle_callback)"]
+    Extrato_EntryPoint --> EXTRATO_CAL_CALLBACK["EXTRATO_MES_CALENDAR_CALLBACK (callback)"]
+    EXTRATO_CAL_CALLBACK --> Action_ShowExtrato["show_month_extrato (valida MM/AAAA ou MMAAAA)"]
+    Action_ShowExtrato --> MainMenu
+    CategoriasSection --> Cat_FIXAS["🏠 Fixas"] & Cat_FLEXIVEIS["🛒 Flexíveis"]
+    Cat_FIXAS --> Cat_SELECT_EXCLUIR["SELECIONAR_CATEGORIA_EXCLUIR (callback)"]
+    Cat_FLEXIVEIS --> Cat_SELECT_EXCLUIR
+    Cat_SELECT_EXCLUIR --> Cat_CONFIRM_EXCLUIR["CONFIRMAR_EXCLUSAO_CATEGORIA\n(❗ Categoria excluída; transações permanecem)"]
+    Cat_CONFIRM_EXCLUIR --> MainMenu
+    ConfigSection --> Config_EDIT_NAME["EDIT_NAME"] & Config_EDIT_SALARY["EDIT_SALARY"] & Config_CONFIRM_RESET["CONFIRM_RESET (sim/nao)"]
+    Config_EDIT_NAME --> MainMenu
+    Config_EDIT_SALARY --> MainMenu
+    Config_CONFIRM_RESET --> MainMenu
+    SaudeSection --> Action_VerMetricas["Ver Métricas (ver_metricas_handler)"] & Action_Recomendacoes["Recomendações IA (recomendacoes_ia_handler)"] & Action_AnaliseIA["Análise Detalhada IA (analise_detalhada_handler / callback)"]
+    Action_VerMetricas --> MainMenu
+    Action_Recomendacoes --> MainMenu
+    Action_AnaliseIA --> MainMenu
+    EduSection --> Action_DicaDia["Dica do Dia"] & Action_Glossario["Glossário"] & Action_Modulos["Módulos Educativos (callback)"]
+    Action_DicaDia --> MainMenu
+    Action_Glossario --> MainMenu
+    Action_Modulos --> MainMenu
+    Action_Ajuda --> MainMenu
+    Action_Resumo --> MainMenu
+     MainMenu:::accent
+     ObjetivosEntry:::section
+     Action_Ajuda:::box
+     Action_Resumo:::box
+     Objetivos_Menu:::section
+     Goals_TYPE:::box
+     UpdateGoal_SELECT:::box
+     DeleteGoal_SELECT:::box
+     Action_MeusObjetivos:::box
+     Goals_DESC:::box
+     Goals_TARGET:::box
+     Goals_DEADLINE:::box
+     GOAL_DEADLINE_CALLBACK:::mini
+     UpdateGoal_VALUE:::box
+     DeleteGoal_CONFIRM:::box
+     ExtratoSection:::section
+     CategoriasSection:::section
+     ConfigSection:::section
+     SaudeSection:::section
+     EduSection:::section
+     Extrato_EntryPoint:::box
+     EXTRATO_CAL_CALLBACK:::mini
+     Action_ShowExtrato:::box
+     Cat_FIXAS:::box
+     Cat_FLEXIVEIS:::box
+     Cat_SELECT_EXCLUIR:::box
+     Cat_CONFIRM_EXCLUIR:::box
+     Config_EDIT_NAME:::box
+     Config_EDIT_SALARY:::box
+     Config_CONFIRM_RESET:::box
+     Action_VerMetricas:::box
+     Action_Recomendacoes:::box
+     Action_AnaliseIA:::box
+     Action_DicaDia:::box
+     Action_Glossario:::box
+     Action_Modulos:::box
+    classDef section fill:#0b3b5c,stroke:#083044,color:#ffffff,stroke-width:1px
+    classDef box fill:#ffffff,stroke:#2d2d2d,color:#0b2433,stroke-width:1px
+    classDef mini fill:#f0f3f8,stroke:#bfcad6,color:#0b2433,stroke-width:1px
+    classDef accent fill:#ffd166,stroke:#b88600,color:#111111,stroke-width:1px
+```
