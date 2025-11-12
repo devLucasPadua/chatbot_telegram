@@ -1,219 +1,205 @@
 ```mermaid
 graph TD
 
-    Start((Start)) --> StartCommand["Usuário envia /start"]
+  %% Entrada
+  Start((Start)) --> StartCommand["Usuário envia /start"]
+  StartCommand -- "Novo usuário: db.user_exists() == False" --> CadastroEntry["Entrada Cadastro"]
+  StartCommand -- "Usuário existente: db.user_exists() == True" --> MainMenu
 
-    %% 1. PONTO DE ENTRADA E CADASTRO
-    StartCommand -- "Novo Usuário (db.user_exists() == False)" --> CadastroEntry["Entrada Cadastro"]
-    StartCommand -- "Usuário Existente (db.user_exists() == True)" --> MainMenu
+  %% 1. Fluxo de Cadastro
+  subgraph Cadastro
+    direction TD
+    CadastroTitle["1 — Fluxo de Cadastro (cadastro_conv_handler)"]
+    CadastroEntry --> Cad_GET_NAME["Estado: GET_NAME"]
+    Cad_GET_NAME --> Cad_GET_SALARY["Estado: GET_SALARY"]
+    Cad_GET_SALARY --> Cad_TIPO_GASTO["Estado: TIPO_GASTO"]
+    Cad_TIPO_GASTO --> Gastos_TIPO_GASTO["Redireciona para Fluxo de Gastos"]
+  end
 
-    subgraph Cadastro
-        
-        CadastroTitle["1. Fluxo de Cadastro - cadastro_conv_handler"]
-        CadastroEntry --> Cad_GET_NAME["Estado: GET_NAME"]
-        Cad_GET_NAME --> Cad_GET_SALARY["Estado: GET_SALARY"]
-        Cad_GET_SALARY --> Cad_TIPO_GASTO["Estado: TIPO_GASTO"]
-        Cad_TIPO_GASTO --> Gastos_TIPO_GASTO["Redireciona para Fluxo de Gastos"]
-    end
+  %% 2. Hub central (menu)
+  MainMenu["🏠 MENU PRINCIPAL / HUB\n(h.main_menu_handler)"]
+  MainMenu -- "/menu" --> MainMenu
+  MainMenu -- "/cancel" --> MainMenu
+  MainMenu -- "Voltar ao Menu" --> MainMenu
 
-    %% 2. HUB CENTRAL (MENU PRINCIPAL)
-    MainMenu["🏠 MENU PRINCIPAL / HUB\n(h.main_menu_handler)"]
-    MainMenu -- "/menu" --> MainMenu
-    MainMenu -- "/cancel" --> MainMenu
-    MainMenu -- "🏠 Voltar ao Menu" --> MainMenu
+  %% 3. Fluxo de Gastos
+  MainMenu -- "🧮 Gastos / Rendas" --> GastosEntry["Entrada Gastos"]
 
-    %% 3. FLUXO DE GASTOS
-    MainMenu -- "🧮 Gastos / Rendas" --> GastosEntry["Entrada Gastos"]
+  subgraph FluxoDeGastos
+    direction TD
+    FluxoGastosTitle["2 — Fluxo de Gastos (gastos_conv_handler)"]
+    GastosEntry --> Gastos_TIPO_GASTO["Estado: TIPO_GASTO"]
 
-    subgraph FluxoDeGastos
-        
-        FluxoGastosTitle["2. Fluxo de Gastos - gastos_conv_handler"]
-        GastosEntry --> Gastos_TIPO_GASTO["Estado: TIPO_GASTO"]
+    Gastos_TIPO_GASTO -- "Gastos Fixos" --> Gastos_CAT_FIXA["Estado: CATEGORIA_FIXA"]
+    Gastos_TIPO_GASTO -- "Gastos Flexíveis" --> Gastos_CAT_FLEX["Estado: CATEGORIA_FLEXIVEL"]
 
-        Gastos_TIPO_GASTO -- "🏠 Gastos Fixos" --> Gastos_CAT_FIXA["Estado: CATEGORIA_FIXA"]
-        Gastos_TIPO_GASTO -- "🛍️ Gastos Flexíveis" --> Gastos_CAT_FLEX["Estado: CATEGORIA_FLEXIVEL"]
+    Gastos_CAT_FIXA -- "Categoria (ex: Moradia)" --> Gastos_VALOR_GASTO["Estado: VALOR_GASTO"]
+    Gastos_CAT_FIXA -- "Outros..." --> Gastos_OUTROS_FIXOS["Estado: OUTROS_FIXOS"]
 
-        Gastos_CAT_FIXA -- "Categoria (Ex: Moradia)" --> Gastos_VALOR_GASTO["Estado: VALOR_GASTO"]
-        Gastos_CAT_FIXA -- "Outros..." --> Gastos_OUTROS_FIXOS["Estado: OUTROS_FIXOS"]
+    Gastos_CAT_FLEX -- "Categoria (ex: Alimentação)" --> Gastos_VALOR_GASTO
+    Gastos_CAT_FLEX -- "Outros..." --> Gastos_OUTROS_FLEX["Estado: OUTROS_FLEXIVEIS"]
 
-        Gastos_CAT_FLEX -- "Categoria (Ex: Alimentação)" --> Gastos_VALOR_GASTO
-        Gastos_CAT_FLEX -- "Outros..." --> Gastos_OUTROS_FLEX["Estado: OUTROS_FLEXIVEIS"]
+    Gastos_OUTROS_FIXOS -- "Adicionar novo" --> Gastos_NOVA_CAT_FIXA["Estado: NOVA_CATEGORIA_OUTROS_FIXOS"]
+    Gastos_OUTROS_FIXOS -- "Minhas categorias" --> Gastos_MINHAS_CAT_FIXAS["Estado: MINHAS_CATEGORIAS_FIXAS"]
+    Gastos_NOVA_CAT_FIXA --> Gastos_VALOR_GASTO
+    Gastos_MINHAS_CAT_FIXAS --> Gastos_VALOR_GASTO
 
-        Gastos_OUTROS_FIXOS -- "➕ Adicionar novo" --> Gastos_NOVA_CAT_FIXA["Estado: NOVA_CATEGORIA_OUTROS_FIXOS"]
-        Gastos_OUTROS_FIXOS -- "📂 Minhas categorias" --> Gastos_MINHAS_CAT_FIXAS["Estado: MINHAS_CATEGORIAS_FIXAS"]
-        Gastos_NOVA_CAT_FIXA --> Gastos_VALOR_GASTO
-        Gastos_MINHAS_CAT_FIXAS --> Gastos_VALOR_GASTO
+    Gastos_OUTROS_FLEX -- "Adicionar novo" --> Gastos_NOVA_CAT_FLEX["Estado: NOVA_CATEGORIA_OUTROS"]
+    Gastos_OUTROS_FLEX -- "Minhas categorias" --> Gastos_MINHAS_CAT_FLEX["Estado: MINHAS_CATEGORIAS"]
+    Gastos_NOVA_CAT_FLEX --> Gastos_VALOR_GASTO
+    Gastos_MINHAS_CAT_FLEX --> Gastos_VALOR_GASTO
 
-        Gastos_OUTROS_FLEX -- "➕ Adicionar novo" --> Gastos_NOVA_CAT_FLEX["Estado: NOVA_CATEGORIA_OUTROS"]
-        Gastos_OUTROS_FLEX -- "📂 Minhas categorias" --> Gastos_MINHAS_CAT_FLEX["Estado: MINHAS_CATEGORIAS"]
-        Gastos_NOVA_CAT_FLEX --> Gastos_VALOR_GASTO
-        Gastos_MINHAS_CAT_FLEX --> Gastos_VALOR_GASTO
+    Gastos_TIPO_GASTO -- "Salário" --> Salarios_Menu["Menu Salários"]
+    Gastos_TIPO_GASTO -- "Renda extra" --> Renda_Menu["Menu Renda Extra"]
 
-        Gastos_TIPO_GASTO -- "💰 Salário" --> Salarios_Menu["Menu Salários"]
-        Gastos_TIPO_GASTO -- "💵 Renda extra" --> Renda_Menu["Menu Renda Extra"]
+    Gastos_VALOR_GASTO -- "Valor" --> Gastos_DATA_GASTO["Estado: DATA_GASTO"]
+    note right of Gastos_DATA_GASTO
+gastos_calendario_handler (callback)
+Entrada manual (handle_date_input)
+    end note
 
-        Gastos_VALOR_GASTO -- "Valor" --> Gastos_DATA_GASTO["Estado: DATA_GASTO"]
-        note right of Gastos_DATA_GASTO
-            gastos_calendario_handler (Callback ^CAL_)
-            Entrada manual (h.handle_date_input)
-        end note
+    Gastos_DATA_GASTO -- "Data" --> Gastos_CONTINUAR["Estado: CONTINUAR_GASTOS"]
+    Gastos_CONTINUAR -- "SIM" --> Gastos_TIPO_GASTO
+    Gastos_CONTINUAR -- "NÃO" --> Gastos_RESUMO["Estado: RESUMO_GASTOS"]
+    Gastos_RESUMO --> MainMenu
+  end
 
-        Gastos_DATA_GASTO -- "Data" --> Gastos_CONTINUAR["Estado: CONTINUAR_GASTOS\n(db.add_transaction)"]
-        Gastos_CONTINUAR -- "✅ SIM" --> Gastos_TIPO_GASTO
-        Gastos_CONTINUAR -- "❌ NÃO" --> Gastos_RESUMO["Estado: RESUMO_GASTOS"]
-        Gastos_RESUMO --> MainMenu
-    end
+  %% 4. Fluxo de Objetivos
+  MainMenu -- "🎯 Objetivos" --> ObjetivosEntry["Entrada Objetivos"]
 
-    %% 4. FLUXO DE OBJETIVOS
-    MainMenu -- "🎯 Objetivos" --> ObjetivosEntry["Entrada Objetivos"]
+  subgraph FluxoDeObjetivos
+    direction TD
+    ObjetivosTitle["3 — Fluxo de Objetivos (goals_conv / update_goal_conv / delete_goal_conv)"]
+    ObjetivosEntry --> Objetivos_Menu["Menu Objetivos"]
 
-    subgraph FluxoDeObjetivos
-        
-        ObjetivosTitle["3. Fluxo de Objetivos - goals_conv / update_goal_conv / delete_goal_conv"]
-        ObjetivosEntry --> Objetivos_Menu["🎯 Menu Objetivos\n(h.objetivos_handler)"]
+    Objetivos_Menu -- "Adicionar Objetivo" --> Goals_TYPE["Estado: GOAL_TYPE"]
+    Goals_TYPE --> Goals_DESC["Estado: GOAL_DESCRIPTION"]
+    Goals_DESC --> Goals_TARGET["Estado: GOAL_TARGET"]
+    Goals_TARGET --> Goals_DEADLINE["Estado: GOAL_DEADLINE"]
+    note right of Goals_DEADLINE
+goals_calendario_handler (callback)
+Entrada manual (goal_deadline_manual_handler)
+    end note
+    Goals_DEADLINE -- "Salvar" --> MainMenu
 
-        Objetivos_Menu -- "🎯 Adicionar Objetivo" --> Goals_TYPE["Estado: GOAL_TYPE"]
-        Goals_TYPE --> Goals_DESC["Estado: GOAL_DESCRIPTION"]
-        Goals_DESC --> Goals_TARGET["Estado: GOAL_TARGET"]
-        Goals_TARGET --> Goals_DEADLINE["Estado: GOAL_DEADLINE / CAL"]
-        note right of Goals_DEADLINE
-            goals_calendario_handler (Callback ^CAL_)
-            Entrada manual (h.goal_deadline_manual_handler)
-        end note
-        Goals_DEADLINE -- "Salvar (db.add_goal)" --> MainMenu
+    Objetivos_Menu -- "Atualizar Progresso" --> UpdateGoal_SELECT["Estado: SELECT_GOAL"]
+    UpdateGoal_SELECT --> UpdateGoal_VALUE["Estado: UPDATE_GOAL_PROGRESS"]
+    UpdateGoal_VALUE -- "Salvar" --> MainMenu
 
-        Objetivos_Menu -- "📊 Atualizar Progresso" --> UpdateGoal_SELECT["Estado: SELECT_GOAL"]
-        note right of UpdateGoal_SELECT
-            update_goal_select_handler (Callback ^goal_)
-        end note
-        UpdateGoal_SELECT --> UpdateGoal_VALUE["Estado: UPDATE_GOAL_PROGRESS"]
-        UpdateGoal_VALUE -- "Salvar" --> MainMenu
+    Objetivos_Menu -- "Excluir Objetivo" --> DeleteGoal_SELECT["Estado: SELECT_GOAL_DELETE"]
+    DeleteGoal_SELECT --> DeleteGoal_CONFIRM["Estado: CONFIRM_DELETE_GOAL"]
+    DeleteGoal_CONFIRM -- "SIM" --> MainMenu
+    DeleteGoal_CONFIRM -- "NÃO" --> MainMenu
 
-        Objetivos_Menu -- "🗑️ Excluir Objetivo" --> DeleteGoal_SELECT["Estado: SELECT_GOAL_DELETE"]
-        note right of DeleteGoal_SELECT
-            delete_goal_select_handler (Callback ^delete_goal_)
-        end note
-        DeleteGoal_SELECT --> DeleteGoal_CONFIRM["Estado: CONFIRM_DELETE_GOAL"]
-        DeleteGoal_CONFIRM -- "✅ SIM (db.delete_goal)" --> MainMenu
-        DeleteGoal_CONFIRM -- "❌ NÃO" --> MainMenu
+    Objetivos_Menu -- "Meus Objetivos" --> Action_MeusObjetivos["Lista de objetivos (retorna)"]
+    Action_MeusObjetivos --> MainMenu
+  end
 
-        Objetivos_Menu -- "📋 Meus Objetivos" --> Action_MeusObjetivos["Lista de objetivos (retorna)"]
-        Action_MeusObjetivos --> MainMenu
-    end
+  %% 5. Fluxo de Salários
+  subgraph FluxoDeSalarios
+    direction TD
+    Salarios_Menu["Menu Salários"]
+    Salarios_Menu -- "Adicionar Salário" --> AddSalary_ORIGIN["Estado: ADD_SALARY_ORIGIN"]
+    AddSalary_ORIGIN --> AddSalary_VALUE["Estado: ADD_SALARY_VALUE"]
+    AddSalary_VALUE -- "Salvar" --> MainMenu
 
-    %% 5. FLUXO DE SALÁRIOS
-    subgraph FluxoDeSalarios
-        
-        Salarios_Menu["💰 Menu Salários\n(h.salario_handler)"]
+    Salarios_Menu -- "Alterar Salários" --> EditSalary_SELECT["Estado: EDIT_SALARY_SELECT"]
+    EditSalary_SELECT --> EditSalary_ACTION["Estado: EDIT_SALARY_ACTION"]
+    EditSalary_ACTION -- "Renomear Origem" --> EditSalary_ORIGIN["Estado: EDIT_SALARY_ORIGIN"]
+    EditSalary_ACTION -- "Alterar Valor" --> EditSalary_VALUE["Estado: EDIT_SALARY_VALUE"]
+    EditSalary_ACTION -- "Tornar Principal" --> MainMenu
+    EditSalary_ACTION -- "Excluir Salário" --> MainMenu
+    EditSalary_ORIGIN -- "Salvar" --> MainMenu
+    EditSalary_VALUE -- "Salvar" --> MainMenu
 
-        Salarios_Menu -- "💵 Adicionar Salário" --> AddSalary_ORIGIN["Estado: ADD_SALARY_ORIGIN"]
-        AddSalary_ORIGIN --> AddSalary_VALUE["Estado: ADD_SALARY_VALUE"]
-        AddSalary_VALUE -- "Salvar (db.add_salary)" --> MainMenu
+    Salarios_Menu -- "Consultar Salários" --> Action_ConsultarSalarios["Consultar salários"]
+    Action_ConsultarSalarios --> MainMenu
+  end
 
-        Salarios_Menu -- "✏️ Alterar Salários" --> EditSalary_SELECT["Estado: EDIT_SALARY_SELECT"]
-        note right of EditSalary_SELECT
-            edit_salaries_callback_handler (Callback ^edit_salary_)
-        end note
-        EditSalary_SELECT --> EditSalary_ACTION["Estado: EDIT_SALARY_ACTION"]
-        EditSalary_ACTION -- "✏️ Renomear Origem" --> EditSalary_ORIGIN["Estado: EDIT_SALARY_ORIGIN"]
-        EditSalary_ACTION -- "💰 Alterar Valor" --> EditSalary_VALUE["Estado: EDIT_SALARY_VALUE"]
-        EditSalary_ACTION -- "🎯 Tornar Principal (db.set_principal_salary)" --> MainMenu
-        EditSalary_ACTION -- "🗑️ Excluir Salário (db.delete_salary)" --> MainMenu
-        EditSalary_ORIGIN -- "Salvar (db.update_salary)" --> MainMenu
-        EditSalary_VALUE -- "Salvar (db.update_salary)" --> MainMenu
+  %% 6. Fluxo de Renda Extra
+  subgraph FluxoRendaExtra
+    direction TD
+    Renda_Menu["Menu Renda Extra"]
+    Renda_Menu -- "Adicionar Renda Extra" --> AddExtra_ORIGIN["Estado: ADD_EXTRA_INCOME_ORIGIN"]
+    AddExtra_ORIGIN --> AddExtra_VALUE["Estado: ADD_EXTRA_INCOME_VALUE"]
+    AddExtra_VALUE -- "Salvar" --> MainMenu
 
-        Salarios_Menu -- "📊 Consultar Salários" --> Action_ConsultarSalarios["h.consultar_salarios_handler"]
-        Action_ConsultarSalarios --> MainMenu
-    end
+    Renda_Menu -- "Alterar Rendas Extras" --> EditExtra_SELECT["Estado: EDIT_EXTRA_INCOME_SELECT"]
+    EditExtra_SELECT --> EditExtra_ACTION["Estado: EDIT_EXTRA_INCOME_ACTION"]
+    EditExtra_ACTION -- "Renomear Origem" --> EditExtra_ORIGIN["Estado: EDIT_EXTRA_INCOME_ORIGIN"]
+    EditExtra_ACTION -- "Alterar Valor" --> EditExtra_VALUE["Estado: EDIT_EXTRA_INCOME_VALUE"]
+    EditExtra_ACTION -- "Excluir Renda Extra" --> MainMenu
+    EditExtra_ORIGIN -- "Salvar" --> MainMenu
+    EditExtra_VALUE -- "Salvar" --> MainMenu
 
-    %% 6. FLUXO DE RENDA EXTRA
-    subgraph FluxoRendaExtra
-        
-        Renda_Menu["💵 Menu Renda Extra\n(h.renda_extra_handler)"]
+    Renda_Menu -- "Consultar Rendas Extras" --> Action_ConsultarRendas["Consultar rendas extras"]
+    Action_ConsultarRendas --> MainMenu
+  end
 
-        Renda_Menu -- "💵 Adicionar Renda Extra" --> AddExtra_ORIGIN["Estado: ADD_EXTRA_INCOME_ORIGIN"]
-        AddExtra_ORIGIN --> AddExtra_VALUE["Estado: ADD_EXTRA_INCOME_VALUE"]
-        AddExtra_VALUE -- "Salvar (db.add_extra_income)" --> MainMenu
+  %% 7. Fluxo de Extrato
+  MainMenu -- "Meu Extrato" --> ExtratoEntry["Entrada Extrato"]
 
-        Renda_Menu -- "✏️ Alterar Rendas Extras" --> EditExtra_SELECT["Estado: EDIT_EXTRA_INCOME_SELECT"]
-        note right of EditExtra_SELECT
-            edit_extra_incomes_handler (Callback ^edit_extra_income_)
-        end note
-        EditExtra_SELECT --> EditExtra_ACTION["Estado: EDIT_EXTRA_INCOME_ACTION"]
-        EditExtra_ACTION -- "✏️ Renomear Origem" --> EditExtra_ORIGIN["Estado: EDIT_EXTRA_INCOME_ORIGIN"]
-        EditExtra_ACTION -- "💰 Alterar Valor" --> EditExtra_VALUE["Estado: EDIT_EXTRA_INCOME_VALUE"]
-        EditExtra_ACTION -- "🗑️ Excluir Renda Extra (db.delete_extra_income)" --> MainMenu
-        EditExtra_ORIGIN -- "Salvar (db.update_extra_income)" --> MainMenu
-        EditExtra_VALUE -- "Salvar (db.update_extra_income)" --> MainMenu
+  subgraph FluxoExtrato
+    direction TD
+    ExtratoEntry --> Extrato_EntryPoint["Estado: EXTRATO_MES"]
+    note right of Extrato_EntryPoint
+extrato_calendario_handler (callback)
+Entrada manual (handle_month_year_input)
+    end note
+    Extrato_EntryPoint -- "Mês/Ano" --> Action_ShowExtrato["Mostrar extrato do mês"]
+    Action_ShowExtrato --> MainMenu
+  end
 
-        Renda_Menu -- "📊 Consultar Rendas Extras" --> Action_ConsultarRendas["h.consultar_rendas_extras_handler"]
-        Action_ConsultarRendas --> MainMenu
-    end
+  %% 8. Fluxo de Categorias
+  MainMenu -- "Suas Categorias" --> Cat_SUAS_CAT["Estado: SUAS_CATEGORIAS"]
 
-    %% 7. FLUXO DE EXTRATO
-    MainMenu -- "🧾 Meu Extrato" --> ExtratoEntry["Entrada Extrato"]
+  subgraph FluxoCategorias
+    direction TD
+    Cat_SUAS_CAT --> Cat_FIXAS["Fixas"]
+    Cat_SUAS_CAT --> Cat_FLEXIVEIS["Flexíveis"]
+    Cat_FIXAS -- "Excluir Categoria" --> Cat_SELECT_EXCLUIR["Estado: SELECIONAR_CATEGORIA_EXCLUIR"]
+    Cat_FLEXIVEIS -- "Excluir Categoria" --> Cat_SELECT_EXCLUIR
+    Cat_SELECT_EXCLUIR --> Cat_CONFIRM_EXCLUIR["Estado: CONFIRMAR_EXCLUSAO_CATEGORIA"]
+    Cat_CONFIRM_EXCLUIR -- "SIM" --> MainMenu
+    Cat_CONFIRM_EXCLUIR -- "NÃO" --> MainMenu
+  end
 
-    subgraph FluxoExtrato
-        
-        ExtratoEntry --> Extrato_EntryPoint["Estado: EXTRATO_MES\n(h.extrato_gastos_handler)"]
-        note right of Extrato_EntryPoint
-            extrato_calendario_handler (Callback ^EXTRATO_ | ^MY_)
-            Entrada manual (h.handle_month_year_input)
-        end note
-        Extrato_EntryPoint -- "Mês/Ano" --> Action_ShowExtrato["h.MonthYearCalendar.show_month_extrato"]
-        Action_ShowExtrato --> MainMenu
-    end
+  %% 9. Fluxo de Configurações
+  MainMenu -- "Configurações" --> Config_Menu["Menu Configurações"]
 
-    %% 8. FLUXO DE CATEGORIAS
-    MainMenu -- "📂 Suas Categorias" --> Cat_SUAS_CAT["Estado: SUAS_CATEGORIAS"]
+  subgraph FluxoConfiguracoes
+    direction TD
+    Config_Menu -- "Editar Perfil" --> Config_EDIT_NAME["Estado: EDIT_NAME"]
+    Config_EDIT_NAME -- "Salvar" --> MainMenu
+    Config_Menu -- "Alterar Salário (Legado)" --> Config_EDIT_SALARY["Estado: EDIT_SALARY"]
+    Config_EDIT_SALARY -- "Salvar" --> MainMenu
+    Config_Menu -- "Redefinir" --> Config_CONFIRM_RESET["Estado: CONFIRM_RESET"]
+    Config_CONFIRM_RESET -- "SIM" --> MainMenu
+    Config_CONFIRM_RESET -- "NÃO" --> MainMenu
+  end
 
-    subgraph FluxoCategorias
-        
-        Cat_SUAS_CAT --> Cat_FIXAS["🏦 Fixas"]
-        Cat_SUAS_CAT --> Cat_FLEXIVEIS["🛍️ Flexíveis"]
-        Cat_FIXAS -- "🗑️ Excluir Categoria" --> Cat_SELECT_EXCLUIR["Estado: SELECIONAR_CATEGORIA_EXCLUIR"]
-        Cat_FLEXIVEIS -- "🗑️ Excluir Categoria" --> Cat_SELECT_EXCLUIR
-        Cat_SELECT_EXCLUIR --> Cat_CONFIRM_EXCLUIR["Estado: CONFIRMAR_EXCLUSAO_CATEGORIA"]
-        Cat_CONFIRM_EXCLUIR -- "✅ SIM (db.delete_custom_category)" --> MainMenu
-        Cat_CONFIRM_EXCLUIR -- "❌ NÃO" --> MainMenu
-    end
+  %% 10. Ações Diretas
+  subgraph AcoesDiretas
+    direction TD
+    MainMenu -- "Saúde Financeira" --> Saude_Menu["Menu Saúde Financeira"]
+    Saude_Menu -- "Ver Métricas Detalhadas" --> Action_VerMetricas["Ver métricas"]
+    Saude_Menu -- "Recomendações IA" --> Action_Recomendacoes["Recomendações IA"]
+    Saude_Menu -- "Análise Detalhada com IA" --> Action_AnaliseIA["Análise IA"]
+    Action_VerMetricas --> MainMenu
+    Action_Recomendacoes --> MainMenu
+    Action_AnaliseIA --> MainMenu
 
-    %% 9. FLUXO DE CONFIGURAÇÕES
-    MainMenu -- "⚙️ Configurações" --> Config_Menu["⚙️ Menu Configurações\n(h.main_menu_handler)"]
+    MainMenu -- "Educação Financeira" --> Edu_Menu["Menu Educação Financeira"]
+    Edu_Menu -- "Dica do Dia" --> Action_DicaDia["Dica do dia"]
+    Edu_Menu -- "Glossário" --> Action_Glossario["Glossário"]
+    Edu_Menu -- "Módulos Educativos" --> Action_Modulos["Módulos educativos"]
+    Action_DicaDia --> MainMenu
+    Action_Glossario --> MainMenu
+    Action_Modulos --> MainMenu
 
-    subgraph FluxoConfiguracoes
-        
-        Config_Menu -- "✏️ Editar Perfil" --> Config_EDIT_NAME["Estado: EDIT_NAME"]
-        Config_EDIT_NAME -- "Salvar (db.update_user_nickname)" --> MainMenu
-        Config_Menu -- "💰 Alterar Salário (Legado)" --> Config_EDIT_SALARY["Estado: EDIT_SALARY"]
-        Config_EDIT_SALARY -- "Salvar (db.update_user_salary)" --> MainMenu
-        Config_Menu -- "🔄 Redefinir" --> Config_CONFIRM_RESET["Estado: CONFIRM_RESET"]
-        Config_CONFIRM_RESET -- "✅ SIM (db.reset_user_data)" --> MainMenu
-        Config_CONFIRM_RESET -- "❌ NÃO" --> MainMenu
-    end
-
-    %% 10. AÇÕES DIRETAS (Handlers Simples)
-    subgraph AcoesDiretas
-        
-        MainMenu -- "📈 Saúde Financeira" --> Saude_Menu["📈 Menu Saúde Financeira"]
-        Saude_Menu -- "📊 Ver Métricas Detalhadas" --> Action_VerMetricas["h.ver_metricas_handler"]
-        Saude_Menu -- "🧠 Recomendações IA" --> Action_Recomendacoes["h.recomendacoes_ia_handler"]
-        Saude_Menu -- "📈 Análise Detalhada com IA" --> Action_AnaliseIA["h.analise_detalhada_ia_handler"]
-        Action_VerMetricas --> MainMenu
-        Action_Recomendacoes --> MainMenu
-        Action_AnaliseIA --> MainMenu
-
-        MainMenu -- "🎓 Educação Financeira" --> Edu_Menu["🎓 Menu Educação Financeira"]
-        Edu_Menu -- "💡 Dica do Dia" --> Action_DicaDia["h.dica_do_dia_handler"]
-        Edu_Menu -- "📚 Glossário" --> Action_Glossario["h.glossario_handler"]
-        Edu_Menu -- "🎓 Módulos Educativos" --> Action_Modulos["h.modulos_educativos_handler"]
-        Action_DicaDia --> MainMenu
-        Action_Glossario --> MainMenu
-        Action_Modulos --> MainMenu
-
-        MainMenu -- "/ajuda" --> Action_Ajuda["h.ajuda_handler"]
-        MainMenu -- "/analisar" --> Action_AnaliseIA
-        MainMenu -- "/resumo" --> Action_Resumo["h.resumo_gastos_handler"]
-        Action_Ajuda --> MainMenu
-        Action_Resumo --> MainMenu
-    end
+    MainMenu -- "/ajuda" --> Action_Ajuda["Ajuda"]
+    MainMenu -- "/analisar" --> Action_AnaliseIA
+    MainMenu -- "/resumo" --> Action_Resumo["Resumo gastos"]
+    Action_Ajuda --> MainMenu
+    Action_Resumo --> MainMenu
+  end
