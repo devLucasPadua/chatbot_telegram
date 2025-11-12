@@ -1,3 +1,4 @@
+#Bloco 1
 ```mermaid
 flowchart TB
  subgraph FIXAS["Gastos Fixos"]
@@ -109,7 +110,7 @@ flowchart TB
     classDef accent fill:#ffd166,stroke:#b88600,color:#111111,stroke-width:1px
     classDef root fill:#083044,stroke:#05232e,color:#ffffff,stroke-width:1px
 ```
-
+#Bloco 2
 ```mermaid
 flowchart TB
     MainMenu["🏠 MENU PRINCIPAL / HUB"] --> ObjetivosEntry["🎯 Objetivos"] & Action_Ajuda["/ajuda"] & Action_Resumo["/resumo"]
