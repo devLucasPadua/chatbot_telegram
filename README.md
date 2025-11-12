@@ -1,13 +1,23 @@
-
+```mermaid
 graph TD
-
-    Start((Start)) --> StartCommand["Usuário envia /start"]
+    
+    start((Start)) --> StartCommand["Usuário envia /start"]
 
     %% -----------------------------------------------------------------
     %% 1. PONTO DE ENTRADA E CADASTRO
     %% -----------------------------------------------------------------
-
+    
     StartCommand -- "Novo Usuário (db.user_exists() == False)" --> CadastroEntry["Entrada Cadastro"]
+
+    subgraph Cadastro
+        Cadastrotitle["1. Fluxo de Cadastro - cadastro_conv_handler"]
+        CadastroEntry --> Cad_GET_NAME["Estado: GET_NAME"]
+        Cad_GET_NAME --> Cad_GET_SALARY["Estado: GET_SALARY"]
+        Cad_GET_SALARY --> Cad_TIPO_GASTO["Estado: TIPO_GASTO"]
+        Cad_TIPO_GASTO --> Gastos_TIPO_GASTO["(Redireciona para Fluxo de Gastos)"]
+    end
+
+    StartCommand -- "Usuário Existente (db.user_exists() == True)" --> MainMenu
 
     subgraph Cadastro
         direction TD
