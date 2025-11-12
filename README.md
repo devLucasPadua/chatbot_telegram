@@ -8,7 +8,7 @@ graph TD
     StartCommand -- "Usuário Existente (db.user_exists() == True)" --> MainMenu
 
     subgraph Cadastro
-        direction TD
+        
         CadastroTitle["1. Fluxo de Cadastro - cadastro_conv_handler"]
         CadastroEntry --> Cad_GET_NAME["Estado: GET_NAME"]
         Cad_GET_NAME --> Cad_GET_SALARY["Estado: GET_SALARY"]
@@ -26,7 +26,7 @@ graph TD
     MainMenu -- "🧮 Gastos / Rendas" --> GastosEntry["Entrada Gastos"]
 
     subgraph FluxoDeGastos
-        direction TD
+        
         FluxoGastosTitle["2. Fluxo de Gastos - gastos_conv_handler"]
         GastosEntry --> Gastos_TIPO_GASTO["Estado: TIPO_GASTO"]
 
@@ -68,7 +68,7 @@ graph TD
     MainMenu -- "🎯 Objetivos" --> ObjetivosEntry["Entrada Objetivos"]
 
     subgraph FluxoDeObjetivos
-        direction TD
+        
         ObjetivosTitle["3. Fluxo de Objetivos - goals_conv / update_goal_conv / delete_goal_conv"]
         ObjetivosEntry --> Objetivos_Menu["🎯 Menu Objetivos\n(h.objetivos_handler)"]
 
@@ -103,7 +103,7 @@ graph TD
 
     %% 5. FLUXO DE SALÁRIOS
     subgraph FluxoDeSalarios
-        direction TD
+        
         Salarios_Menu["💰 Menu Salários\n(h.salario_handler)"]
 
         Salarios_Menu -- "💵 Adicionar Salário" --> AddSalary_ORIGIN["Estado: ADD_SALARY_ORIGIN"]
@@ -128,7 +128,7 @@ graph TD
 
     %% 6. FLUXO DE RENDA EXTRA
     subgraph FluxoRendaExtra
-        direction TD
+        
         Renda_Menu["💵 Menu Renda Extra\n(h.renda_extra_handler)"]
 
         Renda_Menu -- "💵 Adicionar Renda Extra" --> AddExtra_ORIGIN["Estado: ADD_EXTRA_INCOME_ORIGIN"]
@@ -154,7 +154,7 @@ graph TD
     MainMenu -- "🧾 Meu Extrato" --> ExtratoEntry["Entrada Extrato"]
 
     subgraph FluxoExtrato
-        direction TD
+        
         ExtratoEntry --> Extrato_EntryPoint["Estado: EXTRATO_MES\n(h.extrato_gastos_handler)"]
         note right of Extrato_EntryPoint
             extrato_calendario_handler (Callback ^EXTRATO_ | ^MY_)
@@ -168,7 +168,7 @@ graph TD
     MainMenu -- "📂 Suas Categorias" --> Cat_SUAS_CAT["Estado: SUAS_CATEGORIAS"]
 
     subgraph FluxoCategorias
-        direction TD
+        
         Cat_SUAS_CAT --> Cat_FIXAS["🏦 Fixas"]
         Cat_SUAS_CAT --> Cat_FLEXIVEIS["🛍️ Flexíveis"]
         Cat_FIXAS -- "🗑️ Excluir Categoria" --> Cat_SELECT_EXCLUIR["Estado: SELECIONAR_CATEGORIA_EXCLUIR"]
@@ -182,7 +182,7 @@ graph TD
     MainMenu -- "⚙️ Configurações" --> Config_Menu["⚙️ Menu Configurações\n(h.main_menu_handler)"]
 
     subgraph FluxoConfiguracoes
-        direction TD
+        
         Config_Menu -- "✏️ Editar Perfil" --> Config_EDIT_NAME["Estado: EDIT_NAME"]
         Config_EDIT_NAME -- "Salvar (db.update_user_nickname)" --> MainMenu
         Config_Menu -- "💰 Alterar Salário (Legado)" --> Config_EDIT_SALARY["Estado: EDIT_SALARY"]
@@ -194,7 +194,7 @@ graph TD
 
     %% 10. AÇÕES DIRETAS (Handlers Simples)
     subgraph AcoesDiretas
-        direction TD
+        
         MainMenu -- "📈 Saúde Financeira" --> Saude_Menu["📈 Menu Saúde Financeira"]
         Saude_Menu -- "📊 Ver Métricas Detalhadas" --> Action_VerMetricas["h.ver_metricas_handler"]
         Saude_Menu -- "🧠 Recomendações IA" --> Action_Recomendacoes["h.recomendacoes_ia_handler"]
