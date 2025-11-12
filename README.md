@@ -253,7 +253,7 @@ graph TD
         MainMenu -- "📈 Saúde Financeira" --> Saude_Menu[📈 Menu Saúde Financeira]
         Saude_Menu -- "📊 Ver Métricas Detalhadas" --> Action_VerMetricas(h.ver_metricas_handler)
         Saude_Menu -- "🧠 Recomendações IA" --> Action_Recomendacoes(h.recomendacoes_ia_handler)
-        Saude_Menu -- "📈 Análise Detalhada com IA" --> Action_AnaliseIA(h.analise_detalhada_ia_handler)
+        Saode_Menu -- "📈 Análise Detalhada com IA" --> Action_AnaliseIA(h.analise_detalhada_ia_handler)
         Action_VerMetricas --> MainMenu
         Action_Recomendacoes --> MainMenu
         Action_AnaliseIA --> MainMenu
