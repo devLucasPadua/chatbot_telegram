@@ -1,6 +1,12 @@
 ```mermaid
-graph TD;
+graph TD
     
+    [*] --> StartCommand["Usuário envia /start"]
+
+    %% -----------------------------------------------------------------
+    %% 1. PONTO DE ENTRADA E CADASTRO
+    %% -----------------------------------------------------------------
+
     StartCommand -- Novo Usuário (db.user_exists() == False) --> subgraph Cadastro [1. Fluxo de Cadastro (cadastro_conv_handler)]
         direction TD
         Cad_GET_NAME["Estado: GET_NAME"]
