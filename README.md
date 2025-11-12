@@ -1,189 +1,110 @@
 ```mermaid
-graph TD
-
-    Start((Start)) --> StartCommand["Usuário envia /start"]
-
-    %% 1. PONTO DE ENTRADA E CADASTRO
-    StartCommand -- "Novo Usuário (db.user_exists() == False)" --> CadastroEntry["Entrada Cadastro"]
-    StartCommand -- "Usuário Existente (db.user_exists() == True)" --> MainMenu
-
-    subgraph Cadastro
-        CadastroTitle["1. Fluxo de Cadastro - cadastro_conv_handler"]
-        CadastroEntry --> Cad_GET_NAME["Estado: GET_NAME"]
-        Cad_GET_NAME --> Cad_GET_SALARY["Estado: GET_SALARY"]
-        Cad_GET_SALARY --> Cad_TIPO_GASTO["Estado: TIPO_GASTO"]
-        Cad_TIPO_GASTO --> Gastos_TIPO_GASTO["Redireciona para Fluxo de Gastos"]
-    end
-
-    %% 2. HUB CENTRAL (MENU PRINCIPAL)
-    MainMenu["🏠 MENU PRINCIPAL / HUB\n(h.main_menu_handler)"]
-    MainMenu -- "/menu" --> MainMenu
-    MainMenu -- "/cancel" --> MainMenu
-    MainMenu -- "🏠 Voltar ao Menu" --> MainMenu
-
-    %% 3. FLUXO DE GASTOS
-    MainMenu -- "🧾 Gastos / Rendas" --> GastosEntry["Entrada Gastos"]
-
-    subgraph FluxoDeGastos
-        FluxoGastosTitle["2. Fluxo de Gastos - gastos_conv_handler"]
-        GastosEntry --> Gastos_TIPO_GASTO["Estado: TIPO_GASTO"]
-
-        Gastos_TIPO_GASTO -- "🏠 Gastos Fixos" --> Gastos_CAT_FIXA["Estado: CATEGORIA_FIXA"]
-        Gastos_TIPO_GASTO -- "🛒 Gastos Flexíveis" --> Gastos_CAT_FLEX["Estado: CATEGORIA_FLEXIVEL"]
-
-        Gastos_CAT_FIXA -- "Categoria (Ex: Moradia)" --> Gastos_VALOR_GASTO["Estado: VALOR_GASTO"]
-        Gastos_CAT_FIXA -- "Outros..." --> Gastos_OUTROS_FIXOS["Estado: OUTROS_FIXOS"]
-
-        Gastos_CAT_FLEX -- "Categoria (Ex: Alimentação)" --> Gastos_VALOR_GASTO
-        Gastos_CAT_FLEX -- "Outros..." --> Gastos_OUTROS_FLEX["Estado: OUTROS_FLEXIVEIS"]
-
-        Gastos_OUTROS_FIXOS -- "➕ Adicionar novo" --> Gastos_NOVA_CAT_FIXA["Estado: NOVA_CATEGORIA_OUTROS_FIXOS"]
-        Gastos_OUTROS_FIXOS -- "📂 Minhas categorias" --> Gastos_MINHAS_CAT_FIXAS["Estado: MINHAS_CATEGORIAS_FIXAS"]
-        Gastos_NOVA_CAT_FIXA --> Gastos_VALOR_GASTO
-        Gastos_MINHAS_CAT_FIXAS --> Gastos_VALOR_GASTO
-
-        Gastos_OUTROS_FLEX -- "➕ Adicionar novo" --> Gastos_NOVA_CAT_FLEX["Estado: NOVA_CATEGORIA_OUTROS"]
-        Gastos_OUTROS_FLEX -- "📂 Minhas categorias" --> Gastos_MINHAS_CAT_FLEX["Estado: MINHAS_CATEGORIAS"]
-        Gastos_NOVA_CAT_FLEX --> Gastos_VALOR_GASTO
-        Gastos_MINHAS_CAT_FLEX --> Gastos_VALOR_GASTO
-
-        Gastos_TIPO_GASTO -- "💰 Salário" --> Salarios_Menu["Menu Salários"]
-        Gastos_TIPO_GASTO -- "💵 Renda extra" --> Renda_Menu["Menu Renda Extra"]
-
-        Gastos_VALOR_GASTO -- "Valor" --> Gastos_DATA_GASTO["Estado: DATA_GASTO"]
-        %% nota: calendario / entrada manual
-        Gastos_DATA_GASTO -- "Data" --> Gastos_CONTINUAR["Estado: CONTINUAR_GASTOS\n(db.add_transaction)"]
-        Gastos_CONTINUAR -- "✅ SIM" --> Gastos_TIPO_GASTO
-        Gastos_CONTINUAR -- "❌ NÃO" --> Gastos_RESUMO["Estado: RESUMO_GASTOS"]
-        Gastos_RESUMO --> MainMenu
-    end
-
-    %% 4. FLUXO DE OBJETIVOS
-    MainMenu -- "🎯 Objetivos" --> ObjetivosEntry["Entrada Objetivos"]
-
-    subgraph FluxoDeObjetivos
-        ObjetivosTitle["3. Fluxo de Objetivos - goals_conv / update_goal_conv / delete_goal_conv"]
-        ObjetivosEntry --> Objetivos_Menu["🎯 Menu Objetivos\n(h.objetivos_handler)"]
-
-        Objetivos_Menu -- "🎯 Adicionar Objetivo" --> Goals_TYPE["Estado: GOAL_TYPE"]
-        Goals_TYPE --> Goals_DESC["Estado: GOAL_DESCRIPTION"]
-        Goals_DESC --> Goals_TARGET["Estado: GOAL_TARGET"]
-        Goals_TARGET --> Goals_DEADLINE["Estado: GOAL_DEADLINE / CAL"]
-        Goals_DEADLINE -- "Salvar (db.add_goal)" --> MainMenu
-
-        Objetivos_Menu -- "📊 Atualizar Progresso" --> UpdateGoal_SELECT["Estado: SELECT_GOAL"]
-        UpdateGoal_SELECT --> UpdateGoal_VALUE["Estado: UPDATE_GOAL_PROGRESS"]
-        UpdateGoal_VALUE -- "Salvar" --> MainMenu
-
-        Objetivos_Menu -- "🗑️ Excluir Objetivo" --> DeleteGoal_SELECT["Estado: SELECT_GOAL_DELETE"]
-        DeleteGoal_SELECT --> DeleteGoal_CONFIRM["Estado: CONFIRM_DELETE_GOAL"]
-        DeleteGoal_CONFIRM -- "✅ SIM, Excluir (db.delete_goal)" --> MainMenu
-        DeleteGoal_CONFIRM -- "❌ NÃO" --> MainMenu
-
-        Objetivos_Menu -- "📋 Meus Objetivos" --> Action_MeusObjetivos["Lista de objetivos (retorna)"]
-        Action_MeusObjetivos --> MainMenu
-    end
-
-    %% 5. FLUXO DE SALÁRIOS
-    subgraph FluxoDeSalarios
-        Salarios_Menu["💰 Menu Salários\n(h.salario_handler)"]
-
-        Salarios_Menu -- "💵 Adicionar Salário" --> AddSalary_ORIGIN["Estado: ADD_SALARY_ORIGIN"]
-        AddSalary_ORIGIN --> AddSalary_VALUE["Estado: ADD_SALARY_VALUE"]
-        AddSalary_VALUE -- "Salvar (db.add_salary)" --> MainMenu
-
-        Salarios_Menu -- "✏️ Alterar Salários" --> EditSalary_SELECT["Estado: EDIT_SALARY_SELECT"]
-        EditSalary_SELECT --> EditSalary_ACTION["Estado: EDIT_SALARY_ACTION"]
-        EditSalary_ACTION -- "✏️ Renomear Origem" --> EditSalary_ORIGIN["Estado: EDIT_SALARY_ORIGIN"]
-        EditSalary_ACTION -- "💰 Alterar Valor" --> EditSalary_VALUE["Estado: EDIT_SALARY_VALUE"]
-        EditSalary_ACTION -- "🎯 Tornar Principal (db.set_principal_salary)" --> MainMenu
-        EditSalary_ACTION -- "🗑️ Excluir Salário (db.delete_salary)" --> MainMenu
-
-        EditSalary_ORIGIN -- "Salvar (db.update_salary)" --> MainMenu
-        EditSalary_VALUE -- "Salvar (db.update_salary)" --> MainMenu
-
-        Salarios_Menu -- "📊 Consultar Salários" --> Action_ConsultarSalarios["h.consultar_salarios_handler"]
-        Action_ConsultarSalarios --> MainMenu
-    end
-
-    %% 6. FLUXO DE RENDA EXTRA
-    subgraph FluxoRendaExtra
-        Renda_Menu["💵 Menu Renda Extra\n(h.renda_extra_handler)"]
-
-        Renda_Menu -- "💵 Adicionar Renda Extra" --> AddExtra_ORIGIN["Estado: ADD_EXTRA_INCOME_ORIGIN"]
-        AddExtra_ORIGIN --> AddExtra_VALUE["Estado: ADD_EXTRA_INCOME_VALUE"]
-        AddExtra_VALUE -- "Salvar (db.add_extra_income)" --> MainMenu
-
-        Renda_Menu -- "✏️ Alterar Rendas Extras" --> EditExtra_SELECT["Estado: EDIT_EXTRA_INCOME_SELECT"]
-        EditExtra_SELECT --> EditExtra_ACTION["Estado: EDIT_EXTRA_INCOME_ACTION"]
-        EditExtra_ACTION -- "✏️ Renomear Origem" --> EditExtra_ORIGIN["Estado: EDIT_EXTRA_INCOME_ORIGIN"]
-        EditExtra_ACTION -- "💰 Alterar Valor" --> EditExtra_VALUE["Estado: EDIT_EXTRA_INCOME_VALUE"]
-        EditExtra_ACTION -- "🗑️ Excluir Renda Extra (db.delete_extra_income)" --> MainMenu
-
-        EditExtra_ORIGIN -- "Salvar (db.update_extra_income)" --> MainMenu
-        EditExtra_VALUE -- "Salvar (db.update_extra_income)" --> MainMenu
-
-        Renda_Menu -- "📊 Consultar Rendas Extras" --> Action_ConsultarRendas["h.consultar_rendas_extras_handler"]
-        Action_ConsultarRendas --> MainMenu
-    end
-
-    %% 7. FLUXO DE EXTRATO
-    MainMenu -- "🧾 Meu Extrato" --> ExtratoEntry["Entrada Extrato"]
-
-    subgraph FluxoExtrato
-        ExtratoEntry --> Extrato_EntryPoint["Estado: EXTRATO_MES\n(h.extrato_gastos_handler)"]
-        Extrato_EntryPoint -- "Mês/Ano" --> Action_ShowExtrato["h.MonthYearCalendar.show_month_extrato"]
-        Action_ShowExtrato --> MainMenu
-    end
-
-    %% 8. FLUXO DE CATEGORIAS
-    MainMenu -- "📂 Suas Categorias" --> Cat_SUAS_CAT["Estado: SUAS_CATEGORIAS"]
-
-    subgraph FluxoCategorias
-        Cat_SUAS_CAT --> Cat_FIXAS["🏠 Fixas"]
-        Cat_SUAS_CAT --> Cat_FLEXIVEIS["🛒 Flexíveis"]
-        Cat_FIXAS -- "🗑️ Excluir Categoria" --> Cat_SELECT_EXCLUIR["Estado: SELECIONAR_CATEGORIA_EXCLUIR"]
-        Cat_FLEXIVEIS -- "🗑️ Excluir Categoria" --> Cat_SELECT_EXCLUIR
-        Cat_SELECT_EXCLUIR --> Cat_CONFIRM_EXCLUIR["Estado: CONFIRMAR_EXCLUSAO_CATEGORIA"]
-        Cat_CONFIRM_EXCLUIR -- "✅ SIM (db.delete_custom_category)" --> MainMenu
-        Cat_CONFIRM_EXCLUIR -- "❌ NÃO" --> MainMenu
-    end
-
-    %% 9. FLUXO DE CONFIGURAÇÕES
-    MainMenu -- "⚙️ Configurações" --> Config_Menu["⚙️ Menu Configurações\n(h.main_menu_handler)"]
-
-    subgraph FluxoConfiguracoes
-        Config_Menu -- "✏️ Editar Perfil" --> Config_EDIT_NAME["Estado: EDIT_NAME"]
-        Config_EDIT_NAME -- "Salvar (db.update_user_nickname)" --> MainMenu
-        Config_Menu -- "💰 Alterar Salário (Legado)" --> Config_EDIT_SALARY["Estado: EDIT_SALARY"]
-        Config_EDIT_SALARY -- "Salvar (db.update_user_salary)" --> MainMenu
-        Config_Menu -- "🔄 Redefinir" --> Config_CONFIRM_RESET["Estado: CONFIRM_RESET"]
-        Config_CONFIRM_RESET -- "✅ SIM (db.reset_user_data)" --> MainMenu
-        Config_CONFIRM_RESET -- "❌ NÃO" --> MainMenu
-    end
-
-    %% 10. AÇÕES DIRETAS (Handlers Simples)
-    subgraph AcoesDiretas
-        MainMenu -- "📈 Saúde Financeira" --> Saude_Menu["📈 Menu Saúde Financeira"]
-        Saude_Menu -- "📊 Ver Métricas Detalhadas" --> Action_VerMetricas["h.ver_metricas_handler"]
-        Saude_Menu -- "🧠 Recomendações IA" --> Action_Recomendacoes["h.recomendacoes_ia_handler"]
-        Saude_Menu -- "📈 Análise Detalhada com IA" --> Action_AnaliseIA["h.analise_detalhada_ia_handler"]
-        Action_VerMetricas --> MainMenu
-        Action_Recomendacoes --> MainMenu
-        Action_AnaliseIA --> MainMenu
-
-        MainMenu -- "🎓 Educação Financeira" --> Edu_Menu["🎓 Menu Educação Financeira"]
-        Edu_Menu -- "💡 Dica do Dia" --> Action_DicaDia["h.dica_do_dia_handler"]
-        Edu_Menu -- "📚 Glossário" --> Action_Glossario["h.glossario_handler"]
-        Edu_Menu -- "📘 Módulos Educativos" --> Action_Modulos["h.modulos_educativos_handler"]
-        Action_DicaDia --> MainMenu
-        Action_Glossario --> MainMenu
-        Action_Modulos --> MainMenu
-
-        MainMenu -- "/ajuda" --> Action_Ajuda["h.ajuda_handler"]
-        MainMenu -- "/analisar" --> Action_AnaliseIA
-        MainMenu -- "/resumo" --> Action_Resumo["h.resumo_gastos_handler"]
-        Action_Ajuda --> MainMenu
-        Action_Resumo --> MainMenu
-    end
-
+flowchart TB
+ subgraph FIXAS["Gastos Fixos"]
+    direction TB
+        Gastos_CAT_FIXA["CATEGORIA_FIXA (keyboard)"]
+        CATEGORIA_FIXA_CALLBACK["CATEGORIA_FIXA_CALLBACK (inline)"]
+        Gastos_VALOR_GASTO["VALOR_GASTO"]
+        Gastos_OUTROS_FIXOS["OUTROS_FIXOS (botão comentado)"]
+        Gastos_NOVA_CAT_FIXA["➕ Adicionar novo"]
+        Gastos_MINHAS_CAT_FIXAS["📂 Minhas categorias"]
+  end
+ subgraph FLEX["Gastos Flexíveis"]
+    direction TB
+        Gastos_CAT_FLEX["CATEGORIA_FLEXIVEL (keyboard)"]
+        CATEGORIA_FLEX_CALLBACK["CATEGORIA_FLEXIVEL_CALLBACK (inline)"]
+        Gastos_OUTROS_FLEX["OUTROS_FLEXIVEIS (botão comentado)"]
+        Gastos_NOVA_CAT_FLEX["➕ Adicionar novo"]
+        Gastos_MINHAS_CAT_FLEX["📂 Minhas categorias"]
+  end
+    Start(("Start")) --> StartCommand["Usuário envia /start"]
+    StartCommand -- Novo Usuário --> CadastroEntry["Entrada Cadastro"]
+    StartCommand -- Usuário Existente --> MainMenu["🏠 MENU PRINCIPAL / HUB"]
+    CadastroEntry --> Cad_GET_NAME["GET_NAME"]
+    Cad_GET_NAME --> Cad_GET_SALARY["GET_SALARY"]
+    Cad_GET_SALARY --> Cad_TIPO_GASTO["TIPO_GASTO"]
+    Cad_TIPO_GASTO --> Gastos_TIPO_GASTO["TIPO_GASTO"]
+    MainMenu --> GastosEntry["🧾 Gastos / Rendas"] & Salarios_Menu["💰 Menu Salários"] & Renda_Menu["💵 Menu Renda Extra"]
+    GastosEntry --> Gastos_TIPO_GASTO
+    Gastos_TIPO_GASTO --> Salarios_Menu & Renda_Menu
+    Gastos_CAT_FIXA --> CATEGORIA_FIXA_CALLBACK & Gastos_OUTROS_FIXOS
+    CATEGORIA_FIXA_CALLBACK --> Gastos_VALOR_GASTO
+    Gastos_OUTROS_FIXOS --> Gastos_NOVA_CAT_FIXA & Gastos_MINHAS_CAT_FIXAS
+    Gastos_NOVA_CAT_FIXA --> Gastos_VALOR_GASTO
+    Gastos_MINHAS_CAT_FIXAS --> Gastos_VALOR_GASTO
+    Gastos_CAT_FLEX --> CATEGORIA_FLEX_CALLBACK & Gastos_OUTROS_FLEX
+    CATEGORIA_FLEX_CALLBACK --> Gastos_VALOR_GASTO
+    Gastos_OUTROS_FLEX --> Gastos_NOVA_CAT_FLEX & Gastos_MINHAS_CAT_FLEX
+    Gastos_NOVA_CAT_FLEX --> Gastos_VALOR_GASTO
+    Gastos_MINHAS_CAT_FLEX --> Gastos_VALOR_GASTO
+    Gastos_VALOR_GASTO --> Gastos_DATA_GASTO["DATA_GASTO (abre Calendar.handle_callback)"]
+    Gastos_DATA_GASTO --> DATA_GASTO_CALLBACK["DATA_GASTO_CALLBACK (Calendar.handle_callback)"]
+    DATA_GASTO_CALLBACK --> Gastos_CONTINUAR["CONTINUAR_GASTOS (db.add_transaction)"]
+    Gastos_CONTINUAR -- ✅ SIM --> Gastos_TIPO_GASTO
+    Gastos_CONTINUAR -- ❌ NÃO --> Gastos_RESUMO["RESUMO_GASTOS"]
+    Gastos_RESUMO --> MainMenu
+    Salarios_Menu --> AddSalary_ORIGIN["ADD_SALARY_ORIGIN"] & EditSalary_SELECT["EDIT_SALARY_CALLBACK (inline)"]
+    AddSalary_ORIGIN --> AddSalary_VALUE["ADD_SALARY_VALUE"]
+    AddSalary_VALUE --> MainMenu
+    EditSalary_SELECT --> EditSalary_ACTION["EDIT_SALARY_ACTION_CALLBACK"]
+    EditSalary_ACTION --> EditSalary_ORIGIN["EDIT_SALARY_ORIGIN"] & EditSalary_VALUE["EDIT_SALARY_VALUE"] & Make_Principal["TORNAR_PRINCIPAL (db.set_principal_salary)"] & Delete_Salary["EXCLUIR_SALARY (db.delete_salary) - proibido se principal"]
+    EditSalary_ORIGIN --> MainMenu
+    EditSalary_VALUE --> MainMenu
+    Make_Principal --> MainMenu
+    Delete_Salary --> MainMenu
+    Renda_Menu --> AddExtra_ORIGIN["ADD_EXTRA_INCOME_ORIGIN"] & EditExtra_SELECT["EDIT_EXTRA_INCOME_CALLBACK (inline)"]
+    AddExtra_ORIGIN --> AddExtra_VALUE["ADD_EXTRA_INCOME_VALUE"]
+    AddExtra_VALUE --> MainMenu
+    EditExtra_SELECT --> EditExtra_ACTION["EDIT_EXTRA_INCOME_ACTION_CALLBACK"]
+    EditExtra_ACTION --> EditExtra_ORIGIN["EDIT_EXTRA_INCOME_ORIGIN"] & EditExtra_VALUE["EDIT_EXTRA_INCOME_VALUE"] & Delete_Extra["EXCLUIR_EXTRA_INCOME"]
+    EditExtra_ORIGIN --> MainMenu
+    EditExtra_VALUE --> MainMenu
+    Delete_Extra --> MainMenu
+     Start:::root
+     Start:::root
+     StartCommand:::section
+     CadastroEntry:::section
+     MainMenu:::accent
+     Cad_GET_NAME:::box
+     Cad_GET_SALARY:::box
+     Cad_TIPO_GASTO:::box
+     Gastos_TIPO_GASTO:::box
+     Gastos_TIPO_GASTO:::section
+     GastosEntry:::section
+     Salarios_Menu:::box
+     Renda_Menu:::box
+     Gastos_CAT_FIXA:::box
+     CATEGORIA_FIXA_CALLBACK:::mini
+     Gastos_VALOR_GASTO:::box
+     Gastos_OUTROS_FIXOS:::box
+     Gastos_NOVA_CAT_FIXA:::mini
+     Gastos_MINHAS_CAT_FIXAS:::mini
+     Gastos_CAT_FLEX:::box
+     CATEGORIA_FLEX_CALLBACK:::mini
+     Gastos_OUTROS_FLEX:::box
+     Gastos_NOVA_CAT_FLEX:::mini
+     Gastos_MINHAS_CAT_FLEX:::mini
+     Gastos_DATA_GASTO:::box
+     DATA_GASTO_CALLBACK:::mini
+     Gastos_CONTINUAR:::box
+     Gastos_RESUMO:::box
+     AddSalary_ORIGIN:::box
+     AddSalary_VALUE:::box
+     EditSalary_SELECT:::box
+     EditSalary_ACTION:::mini
+     EditSalary_ORIGIN:::box
+     EditSalary_VALUE:::box
+     Make_Principal:::box
+     Delete_Salary:::box
+     AddExtra_ORIGIN:::box
+     AddExtra_VALUE:::box
+     EditExtra_SELECT:::box
+     EditExtra_ACTION:::mini
+     EditExtra_ORIGIN:::box
+     EditExtra_VALUE:::box
+     Delete_Extra:::box
+    classDef section fill:#0b3b5c,stroke:#083044,color:#ffffff,stroke-width:1px
+    classDef box fill:#ffffff,stroke:#2d2d2d,color:#0b2433,stroke-width:1px
+    classDef mini fill:#f0f3f8,stroke:#bfcad6,color:#0b2433,stroke-width:1px
+    classDef accent fill:#ffd166,stroke:#b88600,color:#111111,stroke-width:1px
+    classDef root fill:#083044,stroke:#05232e,color:#ffffff,stroke-width:1px
