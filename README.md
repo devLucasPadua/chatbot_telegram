@@ -1,3 +1,4 @@
+```mermaid
 graph TD
     %% -----------------------------------------------------------------
     %% 1. PONTO DE ENTRADA E CADASTRO
@@ -66,8 +67,8 @@ graph TD
         %% Continuação do fluxo de gastos
         Gastos_VALOR_GASTO -- Valor --> Gastos_DATA_GASTO[Estado: DATA_GASTO]
         note right of Gastos_DATA_GASTO
-            - <b>gastos_calendario_handler</b> [cite: 65] (Callback ^CAL_)
-            - Entrada manual (h.handle_date_input) [cite: 63]
+            - <b>gastos_calendario_handler</b> (Callback ^CAL_)
+            - Entrada manual (h.handle_date_input)
         end note
         
         Gastos_DATA_GASTO -- Data --> Gastos_CONTINUAR[Estado: CONTINUAR_GASTOS\n(db.add_transaction)]
@@ -91,15 +92,15 @@ graph TD
         Goals_DESC -- Descrição --> Goals_TARGET[Estado: GOAL_TARGET]
         Goals_TARGET -- Valor --> Goals_DEADLINE[Estado: GOAL_DEADLINE / GOAL_DEADLINE_CALENDAR]
         note right of Goals_DEADLINE
-            - <b>goals_calendario_handler</b> [cite: 74] (Callback ^CAL_)
-            - Entrada manual (h.goal_deadline_manual_handler) [cite: 73]
+            - <b>goals_calendario_handler</b> (Callback ^CAL_)
+            - Entrada manual (h.goal_deadline_manual_handler)
         end note
         Goals_DEADLINE -- Data (db.add_goal) --> MainMenu
         
         %% Caminho 2: Atualizar Progresso
         Objetivos_Menu -- "📊 Atualizar Progresso" --> UpdateGoal_SELECT[Estado: SELECT_GOAL]
         note right of UpdateGoal_SELECT
-            - <b>update_goal_select_handler</b> [cite: 78] (Callback ^goal_)
+            - <b>update_goal_select_handler</b> (Callback ^goal_)
         end note
         UpdateGoal_SELECT -- Seleciona Objetivo --> UpdateGoal_VALUE[Estado: UPDATE_GOAL_PROGRESS]
         UpdateGoal_VALUE -- Novo Valor (db.update_goal_progress) --> MainMenu
@@ -107,7 +108,7 @@ graph TD
         %% Caminho 3: Excluir Objetivo
         Objetivos_Menu -- "🗑️ Excluir Objetivo" --> DeleteGoal_SELECT[Estado: SELECT_GOAL_DELETE]
         note right of DeleteGoal_SELECT
-            - <b>delete_goal_select_handler</b> [cite: 82] (Callback ^delete_goal_)
+            - <b>delete_goal_select_handler</b> (Callback ^delete_goal_)
         end note
         DeleteGoal_SELECT -- Seleciona Objetivo --> DeleteGoal_CONFIRM[Estado: CONFIRM_DELETE_GOAL]
         DeleteGoal_CONFIRM -- "✅ SIM, Excluir" (db.delete_goal) --> MainMenu
@@ -135,7 +136,7 @@ graph TD
         %% Caminho 2: Alterar Salários
         Salarios_Menu -- "✏️ Alterar Salários" --> EditSalary_SELECT[Estado: EDIT_SALARY_SELECT]
         note right of EditSalary_SELECT
-             - <b>edit_salaries_callback_handler</b> [cite: 91] (Callback ^edit_salary_)
+             - <b>edit_salaries_callback_handler</b> (Callback ^edit_salary_)
         end note
         EditSalary_SELECT -- Seleciona Salário --> EditSalary_ACTION[Estado: EDIT_SALARY_ACTION]
         
@@ -169,7 +170,7 @@ graph TD
         %% Caminho 2: Alterar Rendas Extras
         Renda_Menu -- "✏️ Alterar Rendas Extras" --> EditExtra_SELECT[Estado: EDIT_EXTRA_INCOME_SELECT]
         note right of EditExtra_SELECT
-             - <b>edit_extra_incomes_handler</b> [cite: 97] (Callback ^edit_extra_income_)
+             - <b>edit_extra_incomes_handler</b> (Callback ^edit_extra_income_)
         end note
         EditExtra_SELECT -- Seleciona Renda --> EditExtra_ACTION[Estado: EDIT_EXTRA_INCOME_ACTION]
         
@@ -195,8 +196,8 @@ graph TD
         direction TD
         Extrato_EntryPoint[Estado: EXTRATO_MES\n(h.extrato_gastos_handler)]
         note right of Extrato_EntryPoint
-            - <b>extrato_calendario_handler</b> [cite: 105] (Callback ^EXTRATO_ | ^MY_)
-            - Entrada manual (h.handle_month_year_input) [cite: 102]
+            - <b>extrato_calendario_handler</b> (Callback ^EXTRATO_ | ^MY_)
+            - Entrada manual (h.handle_month_year_input)
         end note
         Extrato_EntryPoint -- Mês/Ano --> Action_ShowExtrato(h.MonthYearCalendar.show_month_extrato)
         Action_ShowExtrato --> MainMenu
