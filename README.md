@@ -1,81 +1,59 @@
 ```mermaid
 graph TD
-    
-    [*] --> StartCommand["Usuário envia /start"]
 
-    %% -----------------------------------------------------------------
-    %% 1. PONTO DE ENTRADA E CADASTRO
-    %% -----------------------------------------------------------------
-    
-    StartCommand -- "Novo Usuário (db.user_exists() == False)" --> subgraph Cadastro [1. Fluxo de Cadastro (cadastro_conv_handler)]
-        Cad_GET_NAME["Estado: GET_NAME"]
-        Cad_GET_SALARY["Estado: GET_SALARY"]
-        Cad_TIPO_GASTO["Estado: TIPO_GASTO"]
-        
-        Cad_GET_NAME -- Nome --> Cad_GET_SALARY
-        Cad_GET_SALARY -- Salário --> Cad_TIPO_GASTO
-        Cad_TIPO_GASTO -- (Redireciona para Fluxo de Gastos) --> Gastos_TIPO_GASTO
-    end
+    Start((Start)) --> StartCommand["Usuário envia /start"]
 
+    %% 1. Entrada e cadastro
+    StartCommand -- "Novo Usuário (db.user_exists() == False)" --> CadastroEntry["Entrada Cadastro"]
     StartCommand -- "Usuário Existente (db.user_exists() == True)" --> MainMenu
-    
-    %% -----------------------------------------------------------------
-    %% 2. HUB CENTRAL (MENU PRINCIPAL)
-    %% -----------------------------------------------------------------
-    
-    MainMenu["🏠 MENU PRINCIPAL / HUB\n(h.main_menu_handler)"]
-    MainMenu -- /menu --> MainMenu
-    MainMenu -- /cancel --> MainMenu
-    MainMenu -- "🏠 Voltar ao Menu" --> MainMenu
-    
-    %% -----------------------------------------------------------------
-    %% 3. FLUXO DE GASTOS (O MAIS COMPLEXO)
-    %% -----------------------------------------------------------------
-    
-    MainMenu -- "🧮 Gastos / Rendas" --> Gastos_TIPO_GASTO
-    
-    subgraph Fluxo de Gastos [2. Fluxo de Gastos (gastos_conv_handler)]
-        Gastos_TIPO_GASTO["Estado: TIPO_GASTO"]
-        
-        %% Caminhos de Gastos
-        Gastos_TIPO_GASTO -- "🏠 Gastos Fixos" --> Gastos_CAT_FIXA["Estado: CATEGORIA_FIXA"]
-        Gastos_TIPO_GASTO -- "🛍️ Gastos Flexíveis" --> Gastos_CAT_FLEX["Estado: CATEGORIA_FLEXIVEL"]
-        
-        Gastos_CAT_FIXA -- "Categoria (Ex: Moradia)" --> Gastos_VALOR_GASTO["Estado: VALOR_GASTO"]
-        Gastos_CAT_FIXA -- "Outros..." --> Gastos_OUTROS_FIXOS["Estado: OUTROS_FIXOS"]
-        
-        Gastos_CAT_FLEX -- "Categoria (Ex: Alimentação)" --> Gastos_VALOR_GASTO
-        Gastos_CAT_FLEX -- "Outros..." --> Gastos_OUTROS_FLEX["Estado: OUTROS_FLEXIVEIS"]
 
-        %% Sub-fluxo "Outros Fixos"
-        Gastos_OUTROS_FIXOS -- "➕ Adicionar novo" --> Gastos_NOVA_CAT_FIXA["Estado: NOVA_CATEGORIA_OUTROS_FIXOS"]
-        Gastos_OUTROS_FIXOS -- "📂 Minhas categorias" --> Gastos_MINHAS_CAT_FIXAS["Estado: MINHAS_CATEGORIAS_FIXAS"]
-        Gastos_NOVA_CAT_FIXA -- Nome --> Gastos_VALOR_GASTO
-        Gastos_MINHAS_CAT_FIXAS -- Categoria --> Gastos_VALOR_GASTO
-        
-        %% Sub-fluxo "Outros Flexíveis"
-        Gastos_OUTROS_FLEX -- "➕ Adicionar novo" --> Gastos_NOVA_CAT_FLEX["Estado: NOVA_CATEGORIA_OUTROS"]
-        Gastos_OUTROS_FLEX -- "📂 Minhas categorias" --> Gastos_MINHAS_CAT_FLEX["Estado: MINHAS_CATEGORIAS"]
-        Gastos_NOVA_CAT_FLEX -- Nome --> Gastos_VALOR_GASTO
-        Gastos_MINHAS_CAT_FLEX -- Categoria --> Gastos_VALOR_GASTO
-
-        %% Caminhos de Rendas (links para outros fluxos)
-        Gastos_TIPO_GASTO -- "💰 Salário" --> Salarios_Menu
-        Gastos_TIPO_GASTO -- "💵 Renda extra" --> Renda_Menu
-        
-        %% Continuação do fluxo de gastos
-        Gastos_VALOR_GASTO -- Valor --> Gastos_DATA_GASTO["Estado: DATA_GASTO"]
-        note right of Gastos_DATA_GASTO
-            - <b>gastos_calendario_handler</b> (Callback ^CAL_)
-            - Entrada manual (h.handle_date_input)
-        end note
-        
-        Gastos_DATA_GASTO -- Data --> Gastos_CONTINUAR["Estado: CONTINUAR_GASTOS\n(db.add_transaction)"]
-        Gastos_CONTINUAR -- "✅ SIM" --> Gastos_TIPO_GASTO
-        Gastos_CONTINUAR -- "❌ NÃO" --> Gastos_RESUMO["Estado: RESUMO_GASTOS"]
-        Gastos_RESUMO --> MainMenu
+    subgraph Cadastro
+      direction TD
+      CadastroEntry --> Cad_GET_NAME["Estado: GET_NAME"]
+      Cad_GET_NAME --> Cad_GET_SALARY["Estado: GET_SALARY"]
+      Cad_GET_SALARY --> Cad_TIPO_GASTO["Estado: TIPO_GASTO"]
+      Cad_TIPO_GASTO --> Gastos_TIPO_GASTO["Redireciona para Fluxo de Gastos"]
     end
 
+    %% 2. Hub principal
+    MainMenu["🏠 MENU PRINCIPAL / HUB\n(h.main_menu_handler)"]
+    MainMenu -- "/menu" --> MainMenu
+    MainMenu -- "/cancel" --> MainMenu
+    MainMenu -- "🏠 Voltar ao Menu" --> MainMenu
+
+    %% 3. Fluxo de gastos
+    MainMenu -- "🧮 Gastos / Rendas" --> GastosEntry["Entrada Gastos"]
+
+    subgraph FluxoDeGastos
+      direction TD
+      GastosEntry --> Gastos_TIPO_GASTO["Estado: TIPO_GASTO"]
+      Gastos_TIPO_GASTO -- "Gastos Fixos" --> Gastos_CAT_FIXA["Estado: CATEGORIA_FIXA"]
+      Gastos_TIPO_GASTO -- "Gastos Flexíveis" --> Gastos_CAT_FLEX["Estado: CATEGORIA_FLEXIVEL"]
+      Gastos_CAT_FIXA -- "Categoria (Ex: Moradia)" --> Gastos_VALOR_GASTO["Estado: VALOR_GASTO"]
+      Gastos_CAT_FIXA -- "Outros..." --> Gastos_OUTROS_FIXOS["Estado: OUTROS_FIXOS"]
+      Gastos_CAT_FLEX -- "Categoria (Ex: Alimentação)" --> Gastos_VALOR_GASTO
+      Gastos_CAT_FLEX -- "Outros..." --> Gastos_OUTROS_FLEX["Estado: OUTROS_FLEXIVEIS"]
+      Gastos_OUTROS_FIXOS -- "Adicionar novo" --> Gastos_NOVA_CAT_FIXA["Estado: NOVA_CATEGORIA_OUTROS_FIXOS"]
+      Gastos_OUTROS_FIXOS -- "Minhas categorias" --> Gastos_MINHAS_CAT_FIXAS["Estado: MINHAS_CATEGORIAS_FIXAS"]
+      Gastos_NOVA_CAT_FIXA --> Gastos_VALOR_GASTO
+      Gastos_MINHAS_CAT_FIXAS --> Gastos_VALOR_GASTO
+      Gastos_OUTROS_FLEX -- "Adicionar novo" --> Gastos_NOVA_CAT_FLEX["Estado: NOVA_CATEGORIA_OUTROS"]
+      Gastos_OUTROS_FLEX -- "Minhas categorias" --> Gastos_MINHAS_CAT_FLEX["Estado: MINHAS_CATEGORIAS"]
+      Gastos_NOVA_CAT_FLEX --> Gastos_VALOR_GASTO
+      Gastos_MINHAS_CAT_FLEX --> Gastos_VALOR_GASTO
+      Gastos_TIPO_GASTO -- "Salário" --> Salarios_Menu["Menu Salários"]
+      Gastos_TIPO_GASTO -- "Renda extra" --> Renda_Menu["Menu Renda Extra"]
+      Gastos_VALOR_GASTO -- "Valor" --> Gastos_DATA_GASTO["Estado: DATA_GASTO"]
+      note right of Gastos_DATA_GASTO
+        gastos_calendario_handler (Callback ^CAL_)
+        Entrada manual (h.handle_date_input)
+      end note
+      Gastos_DATA_GASTO -- "Data" --> Gastos_CONTINUAR["Estado: CONTINUAR_GASTOS\n(db.add_transaction)"]
+      Gastos_CONTINUAR -- "✅ SIM" --> Gastos_TIPO_GASTO
+      Gastos_CONTINUAR -- "❌ NÃO" --> Gastos_RESUMO["Estado: RESUMO_GASTOS"]
+      Gastos_RESUMO --> MainMenu
+    end
+	
     %% -----------------------------------------------------------------
     %% 4. FLUXO DE OBJETIVOS
     %% -----------------------------------------------------------------
