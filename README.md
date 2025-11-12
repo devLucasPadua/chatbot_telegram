@@ -1,5 +1,5 @@
 ```mermaid
-graph TD
+graph TD;
     
 [*] --> StartCommand["Usuário envia /start"]
     
